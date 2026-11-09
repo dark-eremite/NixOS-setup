@@ -1,14 +1,3 @@
-// Static niri configuration. This file lives in the /nix/store and is passed
-// to niri through the wrapper (NIRI_CONFIG). Everything dynamic (palette) is
-// included from ~/.config/niri/colors.kdl, which matugen generates.
-//
-// NOTE: niri >= 25.11 uses `include`, not `import`.
-// NOTE: included files are POSITIONAL — they override options set BEFORE them,
-//       and are overridden by options set AFTER them. The colors include is
-//       therefore the LAST statement so the generated palette always wins over
-//       the neutral fallback values in the static `layout { border {} }` below.
-
-// Input ---------------------------------------------------------------------
 input {
     keyboard {
         xkb {
@@ -21,14 +10,10 @@ input {
     }
 }
 
-// Layout --------------------------------------------------------------------
-// No rounded corners anywhere: do not set border.radius / tab-indicator
-// corner-radius. No focus-ring. Transparent workspace background so that the
-// awww (swww) layer-shell wallpaper shows through on *all* workspaces.
 layout {
     gaps 8
 
-    background-color "rgba(0, 0, 0, 0.0)"
+    background-color "transparent"
 
     focus-ring {
         off
@@ -37,9 +22,7 @@ layout {
     border {
         on
         width 2
-        // Neutral fallbacks used when colors.kdl is missing (optional include).
-        // When colors.kdl exists, the include below overrides these two values.
-        active-color "#7fc8ff"
+        active-color "rgba(127, 200, 255, 0.35)"
         inactive-color "rgba(128, 128, 128, 0.35)"
     }
 
@@ -50,28 +33,54 @@ layout {
     shadow {
         off
     }
+
+    struts {
+        left 4
+        right 4
+    }
 }
 
-// No built-in background image: awww draws it on the bottom layer.
-// Do NOT add a `background {}` node here.
+layer-rule {
+    match namespace="^awww-daemon"
+    place-within-backdrop true
+}
 
-// Misc ----------------------------------------------------------------------
+overview {
+    workspace-shadow {
+        off
+    }
+}
+
 prefer-no-csd
 screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 
-// Autostart -----------------------------------------------------------------
-// swww was renamed to awww in nixpkgs; the daemon binary is `awww-daemon`.
 spawn-at-startup "awww-daemon"
-// quickshell is launched with its wrapper (config baked into the store path).
 spawn-at-startup "quickshell"
-// Recreate colors.* on first login if they were removed, then apply.
 spawn-sh-at-startup "update-theme"
 
-// Keybinds ------------------------------------------------------------------
+workspace "ws-1"
+workspace "ws-2"
+workspace "ws-3"
+workspace "ws-4"
+workspace "ws-5"
+workspace "ws-6"
+workspace "ws-7"
+
+gestures {
+    dnd-edge-workspace-switch {
+        trigger-height 0
+    }
+    hot-corners {
+        off
+    }
+}
+
 binds {
     Mod+T { spawn "alacritty"; }
     Mod+Q { close-window; }
     Mod+W { spawn "random-wallpaper"; }
+
+    Mod+O repeat=false { toggle-overview; }
 
     Mod+Left  { focus-column-left; }
     Mod+Right { focus-column-right; }
@@ -93,16 +102,13 @@ binds {
     Mod+Ctrl+J { move-window-down; }
     Mod+Ctrl+K { move-window-up; }
 
-    Mod+Page_Down { focus-workspace-down; }
-    Mod+Page_Up   { focus-workspace-up; }
-
-    Mod+1 { focus-workspace 1; }
-    Mod+2 { focus-workspace 2; }
-    Mod+3 { focus-workspace 3; }
-    Mod+4 { focus-workspace 4; }
-    Mod+5 { focus-workspace 5; }
-    Mod+6 { focus-workspace 6; }
-    Mod+7 { focus-workspace 7; }
+    Mod+1 { focus-workspace "ws-1"; }
+    Mod+2 { focus-workspace "ws-2"; }
+    Mod+3 { focus-workspace "ws-3"; }
+    Mod+4 { focus-workspace "ws-4"; }
+    Mod+5 { focus-workspace "ws-5"; }
+    Mod+6 { focus-workspace "ws-6"; }
+    Mod+7 { focus-workspace "ws-7"; }
 
     Mod+F { maximize-column; }
     Mod+Shift+F { fullscreen-window; }
@@ -116,6 +122,4 @@ binds {
     Print { screenshot; }
 }
 
-// Dynamic palette — MUST be last so it overrides the fallback border colors.
-// `optional=true` keeps niri loadable until matugen generates the file.
 include optional=true "~/.config/niri/colors.kdl"

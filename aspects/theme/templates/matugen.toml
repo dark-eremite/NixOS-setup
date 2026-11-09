@@ -1,14 +1,5 @@
-# matugen 4 configuration. Stored in /nix/store and passed to matugen with
-# `--config <this file>`. Templates live next to it in the same store dir;
-# their output paths are absolute paths inside the user's ~/.config so that
-# regeneration never touches the store and never needs a nixos-rebuild.
-#
-# `white` and `black` are custom, non-blended colors so the templates can
-# reference literal RGB channels for the inverted semi-transparent border.
-
 [config]
 version_check = false
-# `prefer` + `source-color-index` keep matugen non-interactive (no TTY).
 prefer = "saturation"
 source_color_index = 0
 
@@ -23,3 +14,7 @@ output_path = "/home/dark_eremite/.config/niri/colors.kdl"
 [templates.quickshell]
 input_path = "colors.qml.j2"
 output_path = "/home/dark_eremite/.config/quickshell/colors.qml"
+
+[templates.alacritty]
+input_path = "alacritty.toml.j2"
+output_path = "/home/dark_eremite/.config/alacritty/alacritty.toml"

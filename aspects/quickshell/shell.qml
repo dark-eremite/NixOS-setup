@@ -1,52 +1,91 @@
-// Quickshell bar — static structure, in the /nix/store.
-// Dynamic colors are loaded at runtime from
-//   file:///home/dark_eremite/.config/quickshell/colors.qml
-// which matugen renders from aspects/quickshell/colors.qml.j2.
-//
-// Workspace state comes from niri's IPC (`niri msg --json workspaces`).
-// Clicks are sent back through niri IPC (`focus-workspace N`).
-// Theme reloads come through the Quickshell IPC handler `theme.reload`.
-
 import QtQuick
 import Quickshell
 import Quickshell.Io
 
 ShellRoot {
-    // Exposes `function reload(): void` to `quickshell ipc call theme reload`.
+    readonly property color fallbackBg: "#111318"
+    readonly property color fallbackFg: "#e1e2e9"
+    readonly property color fallbackAccent: "#a7c8ff"
+    readonly property color fallbackOnAccent: "#132f60"
+    readonly property color fallbackBorder: "#59FFFFFF"
+
+    property color bgColor: fallbackBg
+    property color fgColor: fallbackFg
+    property color accentColor: fallbackAccent
+    property color onAccentColor: fallbackOnAccent
+    property color borderColor: fallbackBorder
+
+    function parseColor(s): color {
+        s = ("" + s).trim();
+        if (s.charAt(0) === "#")
+            return s;
+        var m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/i);
+        if (m)
+            return Qt.rgba(
+                +m[1] / 255, +m[2] / 255, +m[3] / 255,
+                m[4] === undefined ? 1 : +m[4]
+            );
+        return "#00000000";
+    }
+
+    function readColor(text, name): color {
+        var re = new RegExp("property\\s+color\\s+" + name + "\\s*:\\s*[\"']([^\"']+)[\"']");
+        var m = re.exec(text);
+        return m ? parseColor(m[1]) : "#00000000";
+    }
+
+    function applyPalette(text): void {
+        if (!text || text.length === 0) {
+            bgColor = fallbackBg;
+            fgColor = fallbackFg;
+            accentColor = fallbackAccent;
+            onAccentColor = fallbackOnAccent;
+            borderColor = fallbackBorder;
+            return;
+        }
+        var keys = [ "bg", "fg", "accent", "on_accent", "border" ];
+        for (var i = 0; i < keys.length; i++) {
+            var re = new RegExp("property\\s+color\\s+" + keys[i] + "\\s*:\\s*[\"']([^\"']+)[\"']");
+            if (!re.test(text)) continue;
+            var c = readColor(text, keys[i]);
+            if (keys[i] === "bg") bgColor = c;
+            else if (keys[i] === "fg") fgColor = c;
+            else if (keys[i] === "accent") accentColor = c;
+            else if (keys[i] === "on_accent") onAccentColor = c;
+            else borderColor = c;
+        }
+    }
+
+    FileView {
+        id: paletteFile
+        path: "/home/dark_eremite/.config/quickshell/colors.qml"
+        watchChanges: true
+        preload: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: applyPalette(this.text())
+        onFileChanged: paletteFile.reload()
+        onLoadFailed: applyPalette("")
+    }
+
     IpcHandler {
         target: "theme"
 
         function reload(): void {
-            // Re-create the dynamic palette loader so a freshly generated
-            // colors.qml is picked up without restarting the whole shell.
-            paletteLoader.active = false;
-            paletteLoader.active = true;
+            paletteFile.reload();
             wsProc.running = true;
         }
     }
 
-    // The dynamic palette object (colors.qml defines a QtObject).
-    Loader {
-        id: paletteLoader
-        active: true
-        asynchronous: false
-        source: "file:///home/dark_eremite/.config/quickshell/colors.qml"
-    }
-
-    // Fallback palette used when colors.qml has not been generated yet.
-    QtObject {
-        id: fallbackPalette
-        readonly property color bg: "#111318"
-        readonly property color fg: "#e1e2e9"
-        readonly property color accent: "#a7c8ff"
-        readonly property color border: "#59FFFFFF"
-    }
-
-    // Poll niri for the focused workspace. A Timer (rather than an endless
-    // Process restart loop) keeps the indicator in sync without spawning
-    // `niri msg` continuously.
     Timer {
-        interval: 500
+        interval: 2000
+        running: true
+        repeat: true
+        onTriggered: paletteFile.reload()
+    }
+
+    Timer {
+        interval: 100
         running: true
         repeat: true
         onTriggered: wsProc.running = true
@@ -61,16 +100,26 @@ ShellRoot {
             onStreamFinished: {
                 try {
                     var list = JSON.parse(this.text);
-                    var idx = 1;
+                    var idx = bar.currentIndex;
+                    var external = false;
                     for (var i = 0; i < list.length; i++) {
-                        if (list[i].is_focused) {
+                        if (!list[i].is_focused)
+                            continue;
+                        var name = list[i].name ? "" + list[i].name : "";
+                        var m = name.match(/^ws-(\d+)$/);
+                        if (m && +m[1] >= 1 && +m[1] <= bar.workspaceCount) {
+                            idx = +m[1];
+                        } else if (!m && list[i].idx >= 1
+                                   && list[i].idx <= bar.workspaceCount) {
                             idx = list[i].idx;
-                            break;
+                        } else {
+                            external = true;
                         }
+                        break;
                     }
+                    bar.externalFocus = external;
                     bar.currentIndex = idx;
                 } catch (e) {
-                    // niri not running yet — keep the last known index.
                 }
             }
         }
@@ -79,15 +128,22 @@ ShellRoot {
     PanelWindow {
         id: bar
 
-        // Resolved palette: dynamic when colors.qml loaded, neutral otherwise.
-        property QtObject pal: (paletteLoader.status === Loader.Ready && paletteLoader.item)
-            ? paletteLoader.item
-            : fallbackPalette
-
         property int currentIndex: 1
+        property bool externalFocus: false
         readonly property int workspaceCount: 7
-        readonly property real cell: 32
-        readonly property real gap: 8
+        readonly property real cell: 16
+        readonly property real gap: 10
+        readonly property real sliderWidth: 26
+        readonly property real sliderPad: (sliderWidth - cell) / 2
+        readonly property real step: cell + gap
+        readonly property real sliderIndex: externalFocus
+            ? workspaceCount + 0.5
+            : currentIndex
+        readonly property real sliderX: wsRow.x
+            + (sliderIndex - 1) * step - sliderPad
+
+        readonly property int sliderZ: 2
+        readonly property int squareZ: 1
 
         anchors {
             top: true
@@ -100,39 +156,20 @@ ShellRoot {
             top: 8
         }
         implicitHeight: 40
-        color: Qt.rgba(bar.pal.bg.r, bar.pal.bg.g, bar.pal.bg.b, 0.75)
+        color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.75)
 
-        // Inverted semi-transparent border, same tone as niri's window border.
-        // No radius anywhere (no rounded corners).
         Rectangle {
             anchors.fill: parent
             color: "transparent"
             border.width: 2
-            border.color: bar.pal.border
+            border.color: borderColor
         }
 
-        // Animated accent indicator behind the 32x32 squares.
-        Rectangle {
-            id: indicator
-            width: bar.cell
-            height: bar.cell
-            color: bar.pal.accent
-            x: wsRow.x + (bar.currentIndex - 1) * (bar.cell + bar.gap)
-            y: wsRow.y
-
-            Behavior on x {
-                NumberAnimation {
-                    duration: 200
-                    easing.type: Easing.OutCubic
-                }
-            }
-        }
-
-        // Exactly 7 workspaces, numbered 1..7, clickable.
         Row {
             id: wsRow
             anchors.centerIn: parent
             spacing: bar.gap
+            z: bar.squareZ
 
             Repeater {
                 model: bar.workspaceCount
@@ -145,15 +182,15 @@ ShellRoot {
                         anchors.fill: parent
                         color: "transparent"
                         border.width: 2
-                        border.color: bar.pal.border
+                        border.color: borderColor
                     }
 
                     Text {
                         anchors.centerIn: parent
                         text: index + 1
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 14
-                        color: bar.pal.fg
+                        font.pixelSize: 9
+                        color: fgColor
                     }
 
                     MouseArea {
@@ -165,16 +202,39 @@ ShellRoot {
             }
         }
 
-        // Invisible 32px-tall strip behind the squares so clicks that land in
-        // the gaps / empty area still switch to the corresponding workspace.
-        // z: -1 keeps the squares' own MouseAreas as the topmost click targets.
+        Rectangle {
+            id: indicator
+            width: bar.sliderWidth
+            height: bar.height
+            color: accentColor
+            x: bar.sliderX
+            y: 0
+            z: bar.sliderZ
+
+            Text {
+                anchors.centerIn: parent
+                text: bar.currentIndex
+                visible: !bar.externalFocus
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 9
+                color: onAccentColor
+            }
+
+            Behavior on x {
+                NumberAnimation {
+                    duration: 200
+                    easing.type: Easing.OutCubic
+                }
+            }
+        }
+
         MouseArea {
             anchors {
                 top: parent.top
                 horizontalCenter: parent.horizontalCenter
             }
             width: wsRow.width
-            height: bar.cell
+            height: bar.height
             z: -1
 
             onClicked: {
@@ -184,10 +244,46 @@ ShellRoot {
             }
         }
 
+        // Статичный трей в правой части: просто глифы nerd-fonts, без
+        // функционала и без обработчиков. Слева направо: яркость, микрофон,
+        // звук, bluetooth, wifi и логотип NixOS в самом правом углу.
+        Row {
+            id: trayRow
+            anchors {
+                right: parent.right
+                rightMargin: 10
+                verticalCenter: parent.verticalCenter
+            }
+            spacing: bar.gap
+            z: bar.squareZ
+
+            Repeater {
+                model: [
+                    { glyph: "\uf185", label: "brightness" },  // fa-sun
+                    { glyph: "\uf130", label: "microphone" },  // fa-microphone
+                    { glyph: "\uf028", label: "volume" },      // fa-volume_up
+                    { glyph: "\uf294", label: "bluetooth" },  // fa-bluetooth_b
+                    { glyph: "\uf1eb", label: "wifi" },        // fa-wifi
+                    { glyph: "\uf313", label: "nixos" }        // linux-nixos
+                ]
+
+                delegate: Text {
+                    width: 20
+                    height: bar.height
+                    text: modelData.glyph
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 16
+                    color: fgColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+        }
+
         function focusWorkspace(idx: int): void {
             currentIndex = idx;
             Quickshell.execDetached([
-                "niri", "msg", "action", "focus-workspace", "" + idx
+                "niri", "msg", "action", "focus-workspace", "ws-" + idx
             ]);
         }
     }

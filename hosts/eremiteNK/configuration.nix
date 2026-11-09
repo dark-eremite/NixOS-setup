@@ -31,7 +31,6 @@
     vim
     wget
     curl
-    alacritty
     opencode
     git
   ];
