@@ -9,9 +9,10 @@ WALL_LINK="$HOME_DIR/.wallpapers/current"
 NIRI_COLORS="$HOME_DIR/.config/niri/colors.kdl"
 QS_COLORS="$HOME_DIR/.config/quickshell/colors.qml"
 ALACRITTY_COLORS="$HOME_DIR/.config/alacritty/alacritty.toml"
+STAMP="$HOME_DIR/.local/state/darkman/theme-source"
 MATUGEN_CONFIG="@MATUGEN_CONFIG@"
 
-mkdir -p "$HOME_DIR/.config/niri" "$HOME_DIR/.config/quickshell" "$HOME_DIR/.config/alacritty"
+mkdir -p "$HOME_DIR/.config/niri" "$HOME_DIR/.config/quickshell" "$HOME_DIR/.config/alacritty" "$HOME_DIR/.local/state/darkman"
 
 MODE="$(cat "$STATE" 2>/dev/null || echo auto)"
 case "$MODE" in
@@ -25,24 +26,46 @@ else
   MT_MODE="$MODE"
 fi
 
-if [[ ! -f "$NIRI_COLORS" || ! -f "$QS_COLORS" || ! -f "$ALACRITTY_COLORS" ]]; then
-  WALL=""
-  if [[ -f "$WALL_LINK" ]]; then
-    WALL="$(readlink -f "$WALL_LINK")"
-  fi
-  if [[ -z "$WALL" || ! -f "$WALL" ]]; then
-    for f in "$HOME_DIR"/.wallpapers/*.{jpg,png,jpeg} \
-             "$HOME_DIR"/.wallpapers/dark/* \
-             "$HOME_DIR"/.wallpapers/light/*; do
-      if [[ -f "$f" ]]; then
-        WALL="$f"
-        break
-      fi
-    done
-  fi
-  if [[ -n "$WALL" && -f "$WALL" ]]; then
-    matugen image "$WALL" -m "$MT_MODE" --config "$MATUGEN_CONFIG"
-  fi
+WALL=""
+
+SHOWN="$(awww query 2>/dev/null | sed -nE 's/.*currently displaying: image: (.*)$/\1/p' | head -1 || true)"
+if [[ -n "$SHOWN" && -f "$SHOWN" ]]; then
+  WALL="$SHOWN"
+fi
+
+if [[ -z "$WALL" && -f "$WALL_LINK" ]]; then
+  WALL="$(readlink -f "$WALL_LINK")"
+fi
+
+if [[ -z "$WALL" || ! -f "$WALL" ]]; then
+  for f in "$HOME_DIR"/.wallpapers/*.{jpg,png,jpeg} \
+           "$HOME_DIR"/.wallpapers/dark/* \
+           "$HOME_DIR"/.wallpapers/light/*; do
+    if [[ -f "$f" ]]; then
+      WALL="$f"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$WALL" || ! -f "$WALL" ]]; then
+  niri msg action load-config-file || true
+  quickshell ipc call theme reload || true
+  exit 0
+fi
+
+ln -sfn "$WALL" "$WALL_LINK"
+
+SIGNATURE="$WALL|$MT_MODE"
+PREVIOUS="$(cat "$STAMP" 2>/dev/null || true)"
+MISSING=0
+[[ -f "$NIRI_COLORS" ]] || MISSING=1
+[[ -f "$QS_COLORS" ]] || MISSING=1
+[[ -f "$ALACRITTY_COLORS" ]] || MISSING=1
+
+if [[ "$PREVIOUS" != "$SIGNATURE" || "$MISSING" == "1" ]]; then
+  matugen image "$WALL" -m "$MT_MODE" --config "$MATUGEN_CONFIG"
+  printf '%s' "$SIGNATURE" > "$STAMP"
 fi
 
 niri msg action load-config-file || true

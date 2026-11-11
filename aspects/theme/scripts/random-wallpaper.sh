@@ -6,9 +6,10 @@ set -o pipefail
 HOME_DIR="/home/dark_eremite"
 STATE="$HOME_DIR/.local/state/darkman/theme-mode"
 WALL_LINK="$HOME_DIR/.wallpapers/current"
+STAMP="$HOME_DIR/.local/state/darkman/theme-source"
 MATUGEN_CONFIG="@MATUGEN_CONFIG@"
 
-mkdir -p "$HOME_DIR/.wallpapers/light" "$HOME_DIR/.wallpapers/dark"
+mkdir -p "$HOME_DIR/.wallpapers/light" "$HOME_DIR/.wallpapers/dark" "$HOME_DIR/.local/state/darkman"
 
 MODE="$(cat "$STATE" 2>/dev/null || echo auto)"
 case "$MODE" in
@@ -43,6 +44,7 @@ else
   MT_MODE="$MODE"
 fi
 matugen image "$WALLPAPER" -m "$MT_MODE" --config "$MATUGEN_CONFIG"
+printf '%s' "$WALLPAPER|$MT_MODE" > "$STAMP"
 
 niri msg action load-config-file || true
 quickshell ipc call theme reload || true

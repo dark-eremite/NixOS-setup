@@ -7,10 +7,10 @@ HOME_DIR="/home/dark_eremite"
 STATE_DIR="$HOME_DIR/.local/state/darkman"
 STATE="$STATE_DIR/theme-mode"
 
-MODE="${1:-auto}"
+MODE="${1:-}"
 case "$MODE" in
   dark|light) ;;
-  *) MODE="auto" ;;
+  *) exit 0 ;;
 esac
 
 mkdir -p "$STATE_DIR"
