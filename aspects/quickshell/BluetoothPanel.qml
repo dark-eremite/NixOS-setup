@@ -3,29 +3,86 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 
-// Окно управления bluetooth (BlueZ через D-Bus).
-// Открывается по IPC `quickshell ipc call bluetooth toggle` / хоткею Mod+B
-// и по клику на иконку bluetooth в трее.
-FloatingWindow {
+// Панель bluetooth — layer-shell (PanelWindow), а не обычное окно на столе.
+// Прижата к правому верхнему углу с теми же отступами, что и бар (top 8,
+// right 12), и выезжает сверху по IPC `bluetooth toggle` / хоткею Mod+B /
+// клику по иконке в трее.
+PanelWindow {
     id: panel
 
-    title: "Bluetooth"
+    anchors {
+        top: true
+        right: true
+    }
+    // slide < 0 уводит панель за верх экрана; 8 = отступ как у бара.
+    margins {
+        top: panel.slide
+        right: 12
+    }
     implicitWidth: 340
     implicitHeight: 420
-    minimumSize: Qt.size(340, 260)
     color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
 
-    // Палитра приходит из ShellRoot (shell.qml), чтобы окно меняло цвета
-    // вместе с баром при смене обоев/темы.
+    // aboveWindows: панель поверх обычных окон. Бордер рисуется ОДИН —
+    // дочерним Rectangle ниже; у layer-shell нет CSD/второй рамки.
+    aboveWindows: true
+
     property color bgColor: "#111318"
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
 
-    property bool shown: false
-    visible: shown
+    function stopScan(): void {
+        var a = Bluetooth.defaultAdapter;
+        if (a && a.discovering)
+            a.discovering = false;
+    }
 
     onClosed: shown = false
+
+    property bool shown: false
+    property bool slidingOut: false
+    readonly property real hiddenTop: -(implicitHeight + 8)
+    readonly property real shownTop: 8
+    property real slide: hiddenTop
+
+    // Держим layer-surface пока идёт анимация ухода, иначе окно исчезнет
+    // раньше, чем успеет уехать вверх.
+    visible: shown || slidingOut
+
+    Behavior on slide {
+        NumberAnimation {
+            duration: 260
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    // onFinished у анимации внутри Behavior недоступен/ненадёжен — снимаем
+    // slidingOut явным таймером по окончании ухода.
+    Timer {
+        id: hideTimer
+        interval: 270
+        running: false
+        repeat: false
+        onTriggered: {
+            if (!panel.shown)
+                panel.slidingOut = false;
+        }
+    }
+
+    onShownChanged: {
+        if (shown) {
+            hideTimer.stop();
+            slidingOut = false;
+            slide = hiddenTop;      // гарантируем старт за экраном
+            slide = shownTop;
+        } else {
+            slidingOut = true;
+            slide = hiddenTop;
+            hideTimer.restart();
+            stopScan();
+        }
+    }
 
     IpcHandler {
         target: "bluetooth"
@@ -35,9 +92,6 @@ FloatingWindow {
         function close(): void { panel.shown = false; }
     }
 
-    // --- Состояние устройств -------------------------------------------------
-    // Bluetooth.devices — QAbstractListModel; values — список QObject.
-    // Пересобираем две секции при изменении состава или состояния устройств.
     property var connectedDevices: []
     property var availableDevices: []
 
@@ -64,8 +118,6 @@ FloatingWindow {
         function onValuesChanged(): void { panel.rebuild(); }
     }
 
-    // connected/paired/state/battery меняются без изменения состава модели —
-    // пересобираем по сигналам каждого устройства.
     Instantiator {
         model: Bluetooth.devices
         delegate: Connections {
@@ -79,7 +131,34 @@ FloatingWindow {
         }
     }
 
-    // --- Вёрстка -------------------------------------------------------------
+    property bool adapterPresent: Bluetooth.defaultAdapter !== null
+    property bool adapterOn: Bluetooth.defaultAdapter
+        ? Bluetooth.defaultAdapter.enabled : false
+    property bool powerBusy: false
+
+    function setPower(on: bool): void {
+        if (Bluetooth.defaultAdapter) {
+            Bluetooth.defaultAdapter.enabled = on;
+            return;
+        }
+        if (powerBusy) return;
+        powerBusy = true;
+        powerProc.command = [ "bluetoothctl", "power", on ? "on" : "off" ];
+        powerProc.running = true;
+    }
+
+    Process {
+        id: powerProc
+        running: false
+        stdout: StdioCollector { waitForEnd: true }
+        onExited: panel.powerBusy = false
+    }
+
+    Connections {
+        target: Bluetooth
+        function onDefaultAdapterChanged(): void { panel.rebuild(); }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "transparent"
@@ -93,16 +172,16 @@ FloatingWindow {
         anchors.margins: 12
         spacing: 8
 
-        // Заголовок + питание адаптера
         Row {
             width: parent.width
             height: 26
             spacing: 8
 
             Text {
-                width: parent.width - parent.spacing - powerButton.width
+                id: titleText
+                width: parent.width - 2 * parent.spacing - scanButton.width - powerButton.width
                 height: parent.height
-                text: "  Bluetooth"
+                text: "Bluetooth"
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 15
                 color: fgColor
@@ -110,75 +189,27 @@ FloatingWindow {
             }
 
             Rectangle {
-                id: powerButton
-                width: 74
-                height: parent.height
-                color: "transparent"
-                border.width: 1
-                border.color: adapterOn ? accentColor : borderColor
-
-                property bool adapterOn: Bluetooth.defaultAdapter
-                    ? Bluetooth.defaultAdapter.enabled : false
-
-                Text {
-                    anchors.centerIn: parent
-                    text: powerButton.adapterOn ? "ON" : "OFF"
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 11
-                    color: fgColor
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (Bluetooth.defaultAdapter)
-                            Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled;
-                    }
-                }
-            }
-        }
-
-        // Статус адаптера + кнопка сканирования
-        Row {
-            width: parent.width
-            height: 24
-            spacing: 8
-
-            Text {
-                id: adapterStatus
-                width: parent.width - parent.spacing - scanButton.width
-                height: parent.height
-                text: {
-                    var a = Bluetooth.defaultAdapter;
-                    if (!a) return "Адаптер не найден";
-                    var s = BluetoothAdapterState.toString(a.state);
-                    return a.name + " · " + s + (a.discovering ? " · поиск…" : "");
-                }
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 10
-                color: fgColor
-                elide: Text.ElideRight
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            Rectangle {
                 id: scanButton
-                width: 74
+                width: 26
                 height: parent.height
                 color: "transparent"
                 border.width: 1
-                border.color: borderColor
+                // Во время поиска подсвечивается И лупа, И обводка.
+                border.color: scanning ? accentColor : borderColor
 
                 property bool scanning: Bluetooth.defaultAdapter
                     ? Bluetooth.defaultAdapter.discovering : false
 
+                // nf-fa-search: центрируем сам Text как item, а не строку
+                // внутри растянутого бокса (иначе глиф уезжает вправо).
                 Text {
                     anchors.centerIn: parent
-                    text: scanButton.scanning ? "■ stop" : "⟳ scan"
+                    width: implicitWidth
+                    height: implicitHeight
+                    text: "\uf002"
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 10
-                    color: fgColor
+                    font.pixelSize: 14
+                    color: scanButton.scanning ? accentColor : fgColor
                 }
 
                 MouseArea {
@@ -191,15 +222,40 @@ FloatingWindow {
                     }
                 }
             }
+
+            Rectangle {
+                id: powerButton
+                width: 26
+                height: parent.height
+                color: "transparent"
+                border.width: 1
+                border.color: adapterOn ? accentColor : borderColor
+
+                Text {
+                    anchors.centerIn: parent
+                    width: implicitWidth
+                    height: implicitHeight
+                    text: "\u{f0425}"
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 14
+                    color: powerBusy ? borderColor
+                         : (adapterOn ? accentColor : fgColor)
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: setPower(!adapterOn)
+                }
+            }
         }
 
         Rectangle { width: parent.width; height: 1; color: borderColor }
 
-        // Секции со списком устройств (Flickable занимает остаток высоты)
         Flickable {
             id: flick
             width: parent.width
-            height: content.height - 26 - 24 - 1 - 3 * content.spacing
+            height: content.height - 26 - 1 - 2 * content.spacing
             contentHeight: listColumn.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -218,6 +274,7 @@ FloatingWindow {
                     fgColor: panel.fgColor
                     accentColor: panel.accentColor
                     borderColor: panel.borderColor
+                    onDeviceSelected: panel.stopScan()
                 }
 
                 BtSection {
@@ -229,6 +286,7 @@ FloatingWindow {
                     fgColor: panel.fgColor
                     accentColor: panel.accentColor
                     borderColor: panel.borderColor
+                    onDeviceSelected: panel.stopScan()
                 }
             }
         }

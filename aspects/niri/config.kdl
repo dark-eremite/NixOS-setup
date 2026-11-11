@@ -79,6 +79,7 @@ binds {
     Mod+T { spawn "alacritty"; }
     Mod+Q { close-window; }
     Mod+W { spawn "random-wallpaper"; }
+    Mod+B { spawn "quickshell" "ipc" "call" "bluetooth" "toggle"; }
 
     Mod+O repeat=false { toggle-overview; }
 

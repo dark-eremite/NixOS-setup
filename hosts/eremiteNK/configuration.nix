@@ -1,13 +1,11 @@
-# Host-specific configuration for eremiteNK.
-# User accounts, hostname and the desktop stack are owned by den aspects in
-# /aspects; this file keeps the machine-level bits (boot, network, packages).
-
 { config, lib, pkgs, ... }:
 
 {
   imports = [
     ./hardware-configuration.nix
   ];
+
+  nixpkgs.config.allowUnfree = true;
 
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
@@ -27,13 +25,7 @@
 
   programs.firefox.enable = true;
 
-  environment.systemPackages = with pkgs; [
-    vim
-    wget
-    curl
-    opencode
-    git
-  ];
+  environment.systemPackages = import ../../packages.nix { inherit pkgs; };
 
   # This value is fixed for the lifetime of the installation. See the NixOS
   # manual before ever changing it.

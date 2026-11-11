@@ -9,6 +9,8 @@ WALL_LINK="$HOME_DIR/.wallpapers/current"
 STAMP="$HOME_DIR/.local/state/darkman/theme-source"
 MATUGEN_CONFIG="@MATUGEN_CONFIG@"
 
+@WALLPAPER_MODE@
+
 mkdir -p "$HOME_DIR/.wallpapers/light" "$HOME_DIR/.wallpapers/dark" "$HOME_DIR/.local/state/darkman"
 
 MODE="$(cat "$STATE" 2>/dev/null || echo auto)"
@@ -38,11 +40,7 @@ ln -sfn "$WALLPAPER" "$WALL_LINK"
 
 awww img "$WALLPAPER" --transition-fps 60 --transition-type grow || true
 
-if [[ "$MODE" == "auto" ]]; then
-  MT_MODE="smart"
-else
-  MT_MODE="$MODE"
-fi
+MT_MODE="$(wallpaper_mode "$WALLPAPER" "$STATE")"
 matugen image "$WALLPAPER" -m "$MT_MODE" --config "$MATUGEN_CONFIG"
 printf '%s' "$WALLPAPER|$MT_MODE" > "$STAMP"
 

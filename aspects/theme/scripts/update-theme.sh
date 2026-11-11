@@ -12,19 +12,9 @@ ALACRITTY_COLORS="$HOME_DIR/.config/alacritty/alacritty.toml"
 STAMP="$HOME_DIR/.local/state/darkman/theme-source"
 MATUGEN_CONFIG="@MATUGEN_CONFIG@"
 
+@WALLPAPER_MODE@
+
 mkdir -p "$HOME_DIR/.config/niri" "$HOME_DIR/.config/quickshell" "$HOME_DIR/.config/alacritty" "$HOME_DIR/.local/state/darkman"
-
-MODE="$(cat "$STATE" 2>/dev/null || echo auto)"
-case "$MODE" in
-  dark|light|auto) ;;
-  *) MODE="auto" ;;
-esac
-
-if [[ "$MODE" == "auto" ]]; then
-  MT_MODE="smart"
-else
-  MT_MODE="$MODE"
-fi
 
 WALL=""
 
@@ -56,6 +46,7 @@ fi
 
 ln -sfn "$WALL" "$WALL_LINK"
 
+MT_MODE="$(wallpaper_mode "$WALL" "$STATE")"
 SIGNATURE="$WALL|$MT_MODE"
 PREVIOUS="$(cat "$STAMP" 2>/dev/null || true)"
 MISSING=0

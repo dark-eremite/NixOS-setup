@@ -3,7 +3,12 @@
   pkgs,
 }:
 let
-  shellQml = ./shell.qml;
+  shellDir = pkgs.runCommand "quickshell-config" { } ''
+    mkdir -p $out
+    cp ${./shell.qml} $out/shell.qml
+    cp ${./BluetoothPanel.qml} $out/BluetoothPanel.qml
+    cp ${./BtSection.qml} $out/BtSection.qml
+  '';
 
   wm = inputs.wrapper-manager.lib {
     inherit pkgs;
@@ -14,11 +19,11 @@ let
 
           programs.quickshell.prependFlags = [
             "--path"
-            "${shellQml}"
+            "${shellDir}"
           ];
           programs.qs.prependFlags = [
             "--path"
-            "${shellQml}"
+            "${shellDir}"
           ];
         };
       }
@@ -26,6 +31,6 @@ let
   };
 in
 {
-  inherit shellQml;
+  inherit shellDir;
   wrappedQuickshell = wm.config.wrappers.quickshell.wrapped;
 }

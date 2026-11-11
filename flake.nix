@@ -49,6 +49,11 @@
             imports = [ ./hosts/eremiteNK/configuration.nix ];
 
             users.users.dark_eremite.extraGroups = [ "wheel" "networkmanager" ];
+
+            hardware.bluetooth = {
+              enable = true;
+              powerOnBoot = true;
+            };
           };
         };
 

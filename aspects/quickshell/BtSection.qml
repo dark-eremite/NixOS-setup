@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell.Bluetooth
 
-// Одна секция списка: заголовок + строки устройств.
 Column {
     id: section
 
@@ -13,13 +12,15 @@ Column {
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
 
+    signal deviceSelected()
+
     width: 300
     spacing: 4
 
     Text {
         width: parent.width
         height: 18
-        text: section.heading + " (" + section.devices.length + ")"
+        text: section.heading + "  " + section.devices.length
         font.family: "JetBrainsMono Nerd Font"
         font.pixelSize: 11
         color: section.accentColor
@@ -61,7 +62,6 @@ Column {
                 Text {
                     width: 20
                     height: parent.height
-                    //  bluetooth /  headphones /  microphone /  keyboard
                     text: {
                         var icon = ("" + modelData.icon).toLowerCase();
                         if (icon.indexOf("audio") >= 0 || icon.indexOf("head") >= 0) return "";
@@ -71,11 +71,12 @@ Column {
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: 14
                     color: modelData.connected ? section.accentColor : section.fgColor
+                    horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
 
                 Column {
-                    width: parent.width - 20 - 8 - 8 - statusText.width
+                    width: parent.width - 20 - 8 - 8 - actionIcon.width
                     height: parent.height
                     spacing: 1
 
@@ -91,9 +92,11 @@ Column {
                     Text {
                         width: parent.width
                         text: modelData.address
-                            + (modelData.paired ? " · сопряжён" : "")
+                            // Quickshell отдаёт battery как долю 0..1
+                            // (BlueZ Percentage / 100), поэтому 100% = 1.0.
+                            // Раньше Math.round(1.0) давал «1%».
                             + (modelData.batteryAvailable
-                               ? " · " + Math.round(modelData.battery) + "%" : "")
+                               ? " · " + Math.round(modelData.battery * 100) + "%" : "")
                         font.family: "JetBrainsMono Nerd Font"
                         font.pixelSize: 9
                         color: section.fgColor
@@ -103,14 +106,14 @@ Column {
                 }
 
                 Text {
-                    id: statusText
-                    width: 62
+                    id: actionIcon
+                    width: 20
                     height: parent.height
-                    text: modelData.connected ? " disconnect" : " connect"
+                    text: modelData.connected ? "\u{f0319}" : "\u{f00b1}"
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 9
+                    font.pixelSize: 13
                     color: modelData.connected ? section.accentColor : section.fgColor
-                    horizontalAlignment: Text.AlignRight
+                    horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
             }
@@ -119,6 +122,7 @@ Column {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
+                    section.deviceSelected();
                     if (modelData.connected)
                         modelData.disconnect();
                     else

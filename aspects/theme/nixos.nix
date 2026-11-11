@@ -40,9 +40,10 @@
             qs.wrappedQuickshell
             bash
           ] ++ extraInputs;
-          text = builtins.replaceStrings [ "@MATUGEN_CONFIG@" ] [ matugenConfig ] (
-            builtins.readFile src
-          );
+          text = builtins.replaceStrings
+            [ "@MATUGEN_CONFIG@" "@WALLPAPER_MODE@" ]
+            [ matugenConfig (builtins.readFile ./scripts/wallpaper-mode.sh) ]
+            (builtins.readFile src);
           checkPhase = "";
         };
 

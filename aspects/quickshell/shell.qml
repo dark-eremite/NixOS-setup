@@ -1,8 +1,12 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Bluetooth
+import qs
 
 ShellRoot {
+    id: root
+
     readonly property color fallbackBg: "#111318"
     readonly property color fallbackFg: "#e1e2e9"
     readonly property color fallbackAccent: "#a7c8ff"
@@ -14,6 +18,38 @@ ShellRoot {
     property color accentColor: fallbackAccent
     property color onAccentColor: fallbackOnAccent
     property color borderColor: fallbackBorder
+
+    property bool btEnabled: Bluetooth.defaultAdapter
+        ? Bluetooth.defaultAdapter.enabled : false
+    property bool btConnected: false
+    property string btGlyph: !btEnabled ? "\u{f00b2}"
+        : (btConnected ? "\u{f00b1}" : "\uf294")
+    property color btColor: btConnected ? accentColor : fgColor
+
+    function refreshBt(): void {
+        var n = 0;
+        var vals = Bluetooth.devices ? Bluetooth.devices.values : [];
+        for (var i = 0; i < vals.length; i++) {
+            if (vals[i] && vals[i].connected) n++;
+        }
+        root.btConnected = n > 0;
+    }
+
+    Component.onCompleted: refreshBt()
+
+    Connections {
+        target: Bluetooth.devices
+        function onValuesChanged(): void { root.refreshBt(); }
+    }
+
+    Instantiator {
+        model: Bluetooth.devices
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onConnectedChanged(): void { root.refreshBt(); }
+        }
+    }
 
     function parseColor(s): color {
         s = ("" + s).trim();
@@ -125,6 +161,14 @@ ShellRoot {
         }
     }
 
+    BluetoothPanel {
+        id: btPanel
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+    }
+
     PanelWindow {
         id: bar
 
@@ -185,14 +229,6 @@ ShellRoot {
                         border.color: borderColor
                     }
 
-                    Text {
-                        anchors.centerIn: parent
-                        text: index + 1
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 9
-                        color: fgColor
-                    }
-
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -216,7 +252,7 @@ ShellRoot {
                 text: bar.currentIndex
                 visible: !bar.externalFocus
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 9
+                font.pixelSize: 11
                 color: onAccentColor
             }
 
@@ -244,9 +280,6 @@ ShellRoot {
             }
         }
 
-        // Статичный трей в правой части: просто глифы nerd-fonts, без
-        // функционала и без обработчиков. Слева направо: яркость, микрофон,
-        // звук, bluetooth, wifi и логотип NixOS в самом правом углу.
         Row {
             id: trayRow
             anchors {
@@ -259,23 +292,38 @@ ShellRoot {
 
             Repeater {
                 model: [
-                    { glyph: "\uf185", label: "brightness" },  // fa-sun
-                    { glyph: "\uf130", label: "microphone" },  // fa-microphone
-                    { glyph: "\uf028", label: "volume" },      // fa-volume_up
-                    { glyph: "\uf294", label: "bluetooth" },  // fa-bluetooth_b
-                    { glyph: "\uf1eb", label: "wifi" },        // fa-wifi
-                    { glyph: "\uf313", label: "nixos" }        // linux-nixos
+                    { glyph: "\uf185", label: "brightness" },
+                    { glyph: "\uf130", label: "microphone" },
+                    { glyph: "\uf028", label: "volume" },
+                    { glyph: root.btGlyph, label: "bluetooth", dynamic: true },
+                    { glyph: "\uf1eb", label: "wifi" },
+                    { glyph: "\uf313", label: "nixos" }
                 ]
 
-                delegate: Text {
-                    width: 20
+                delegate: Item {
+                    width: 24
                     height: bar.height
-                    text: modelData.glyph
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 16
-                    color: fgColor
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
+
+                    property bool isBt: modelData.label === "bluetooth"
+                    property string icon: isBt ? root.btGlyph : modelData.glyph
+                    property color tint: isBt ? root.btColor : fgColor
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: parent.icon
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 16
+                        color: parent.tint
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: parent.isBt
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: btPanel.shown = !btPanel.shown
+                    }
                 }
             }
         }
