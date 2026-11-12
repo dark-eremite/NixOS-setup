@@ -3,6 +3,7 @@
 {
   imports = [
     ./hardware-configuration.nix
+    ./users.nix
   ];
 
   nixpkgs.config.allowUnfree = true;

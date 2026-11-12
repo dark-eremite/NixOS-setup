@@ -1,12 +1,13 @@
 {
   nixos = {
+    config,
+    lib,
     pkgs,
     inputs,
     ...
   }:
     let
-      home = "/home/dark_eremite";
-      stateFile = "${home}/.local/state/darkman/theme-mode";
+      normalUsers = lib.filterAttrs (_: u: u.isNormalUser) config.users.users;
 
       qs = import ../quickshell/wrapper.nix { inherit inputs pkgs; };
 
@@ -95,13 +96,27 @@
       services.dbus.packages = [ pkgs.darkman ];
       xdg.portal.extraPortals = [ pkgs.darkman ];
 
-      system.activationScripts.seedThemeMode = ''
-        mkdir -p ${home}/.local/state/darkman ${home}/.config/niri ${home}/.config/quickshell ${home}/.wallpapers/light ${home}/.wallpapers/dark
-        if [ ! -f ${stateFile} ]; then
-          printf '%s' 'auto' > ${stateFile}
-          chown dark_eremite:users ${stateFile} 2>/dev/null || true
-        fi
-      '';
+      system.activationScripts.seedThemeMode = {
+        deps = [ "users" ];
+        text = lib.concatMapStringsSep "\n" (
+          u:
+          let
+            stateFile = "${u.home}/.local/state/darkman/theme-mode";
+          in
+          ''
+            install -d -o ${u.name} -g users -m 0755 \
+              "${u.home}/.local/state/darkman" \
+              "${u.home}/.config/niri" \
+              "${u.home}/.config/quickshell" \
+              "${u.home}/.wallpapers/light" \
+              "${u.home}/.wallpapers/dark"
+            if [ ! -f "${stateFile}" ]; then
+              printf '%s' 'auto' > "${stateFile}"
+              chown ${u.name}:users "${stateFile}"
+            fi
+          ''
+        ) (lib.attrValues normalUsers);
+      };
 
       xdg.portal.config.niri = {
         "org.freedesktop.impl.portal.Settings" = "darkman";

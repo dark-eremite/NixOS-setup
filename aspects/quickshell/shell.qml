@@ -94,7 +94,7 @@ ShellRoot {
 
     FileView {
         id: paletteFile
-        path: "/home/dark_eremite/.config/quickshell/colors.qml"
+        path: String(Quickshell.env("HOME")) + "/.config/quickshell/colors.qml"
         watchChanges: true
         preload: true
         blockLoading: true

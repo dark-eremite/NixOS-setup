@@ -9,12 +9,12 @@ black = { color = "#000000", blend = false }
 
 [templates.niri]
 input_path = "colors.kdl.j2"
-output_path = "/home/dark_eremite/.config/niri/colors.kdl"
+output_path = "~/.config/niri/colors.kdl"
 
 [templates.quickshell]
 input_path = "colors.qml.j2"
-output_path = "/home/dark_eremite/.config/quickshell/colors.qml"
+output_path = "~/.config/quickshell/colors.qml"
 
 [templates.alacritty]
 input_path = "alacritty.toml.j2"
-output_path = "/home/dark_eremite/.config/alacritty/alacritty.toml"
+output_path = "~/.config/alacritty/alacritty.toml"

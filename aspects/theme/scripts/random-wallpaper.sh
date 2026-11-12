@@ -3,7 +3,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-HOME_DIR="/home/dark_eremite"
+HOME_DIR="${HOME:?HOME is not set}"
 STATE="$HOME_DIR/.local/state/darkman/theme-mode"
 WALL_LINK="$HOME_DIR/.wallpapers/current"
 STAMP="$HOME_DIR/.local/state/darkman/theme-source"

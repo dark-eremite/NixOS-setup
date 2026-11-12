@@ -23,8 +23,6 @@
         den.default.includes = [ den.batteries.flake-scope ];
 
         den.hosts.x86_64-linux.eremiteNK = {
-          users.dark_eremite = { };
-
           instantiate =
             args:
             inputs.nixpkgs.lib.nixosSystem (
@@ -39,16 +37,12 @@
         den.aspects.eremiteNK = {
           includes = [
             den.batteries.hostname
-            den.batteries.define-user
-            den.batteries.primary-user
             den.aspects.niri
             den.aspects.theme
           ];
 
           nixos = {
             imports = [ ./hosts/eremiteNK/configuration.nix ];
-
-            users.users.dark_eremite.extraGroups = [ "wheel" "networkmanager" ];
 
             hardware.bluetooth = {
               enable = true;
