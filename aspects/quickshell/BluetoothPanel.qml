@@ -3,10 +3,6 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 
-// Панель bluetooth — layer-shell (PanelWindow), а не обычное окно на столе.
-// Прижата к правому верхнему углу с теми же отступами, что и бар (top 8,
-// right 12), и выезжает сверху по IPC `bluetooth toggle` / хоткею Mod+B /
-// клику по иконке в трее.
 PanelWindow {
     id: panel
 
@@ -14,7 +10,6 @@ PanelWindow {
         top: true
         right: true
     }
-    // slide < 0 уводит панель за верх экрана; 8 = отступ как у бара.
     margins {
         top: panel.slide
         right: 12
@@ -23,8 +18,6 @@ PanelWindow {
     implicitHeight: 420
     color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
 
-    // aboveWindows: панель поверх обычных окон. Бордер рисуется ОДИН —
-    // дочерним Rectangle ниже; у layer-shell нет CSD/второй рамки.
     aboveWindows: true
 
     property color bgColor: "#111318"
@@ -46,8 +39,6 @@ PanelWindow {
     readonly property real shownTop: 8
     property real slide: hiddenTop
 
-    // Держим layer-surface пока идёт анимация ухода, иначе окно исчезнет
-    // раньше, чем успеет уехать вверх.
     visible: shown || slidingOut
 
     Behavior on slide {
@@ -57,8 +48,6 @@ PanelWindow {
         }
     }
 
-    // onFinished у анимации внутри Behavior недоступен/ненадёжен — снимаем
-    // slidingOut явным таймером по окончании ухода.
     Timer {
         id: hideTimer
         interval: 270
@@ -74,7 +63,7 @@ PanelWindow {
         if (shown) {
             hideTimer.stop();
             slidingOut = false;
-            slide = hiddenTop;      // гарантируем старт за экраном
+            slide = hiddenTop;
             slide = shownTop;
         } else {
             slidingOut = true;
@@ -194,14 +183,11 @@ PanelWindow {
                 height: parent.height
                 color: "transparent"
                 border.width: 1
-                // Во время поиска подсвечивается И лупа, И обводка.
                 border.color: scanning ? accentColor : borderColor
 
                 property bool scanning: Bluetooth.defaultAdapter
                     ? Bluetooth.defaultAdapter.discovering : false
 
-                // nf-fa-search: центрируем сам Text как item, а не строку
-                // внутри растянутого бокса (иначе глиф уезжает вправо).
                 Text {
                     anchors.centerIn: parent
                     width: implicitWidth

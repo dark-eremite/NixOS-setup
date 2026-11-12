@@ -3,16 +3,6 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
 
-// Панель Wi-Fi — полный аналог BluetoothPanel: layer-shell (PanelWindow),
-// прижата к правому верхнему углу, выезжает сверху по IPC `wifi toggle`
-// / хоткею Mod+I / клику по иконке в трее.
-//
-// Источник данных — встроенный синглтон Quickshell.Networking
-// (NetworkManager через D-Bus), НЕ парсинг nmcli/iw.
-//
-// Состояние иконки трея (сила сигнала, связность, ethernet) и опрос раз в
-// 30 с живут в ShellRoot (shell.qml), как и состояние bluetooth. Сюда
-// пробрасываются только снимки connectivity / portalUrl для строк списка.
 PanelWindow {
     id: panel
 
@@ -35,13 +25,11 @@ PanelWindow {
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
 
-    // Снимок NetworkConnectivity (0..4) и URL страницы портала из ShellRoot.
+    focusable: true
+
     property int connectivity: 0
     property string portalUrl: ""
 
-    // Списки сетей пересобраны — просим ShellRoot обновить снимок иконки
-    // трея. Сигналы D-Bus приходят асинхронно и ненадёжны как триггер:
-    // rebuild() — единственная точка, где модель точно уже актуальна.
     signal networksChanged()
 
     onClosed: shown = false
@@ -78,12 +66,12 @@ PanelWindow {
             slidingOut = false;
             slide = hiddenTop;
             slide = shownTop;
-            panel.setScan(true);       // обновляем список AP, пока открыты
+            panel.setScan(true);
         } else {
             slidingOut = true;
             slide = hiddenTop;
             hideTimer.restart();
-            panel.setScan(false);      // не сканируем в фоне
+            panel.setScan(false);
         }
     }
 
@@ -95,10 +83,9 @@ PanelWindow {
         function close(): void { panel.shown = false; }
     }
 
-    // ---- Устройства и сети -------------------------------------------------
-
     property var connectedNetworks: []
     property var availableNetworks: []
+    property var allNetworks: []
 
     function setScan(on: bool): void {
         var devs = Networking.devices ? Networking.devices.values : [];
@@ -129,13 +116,13 @@ PanelWindow {
             }
         }
 
-        // Доступные — по убыванию силы сигнала.
         available.sort(function (a, b) {
             return (b.signalStrength || 0) - (a.signalStrength || 0);
         });
 
         panel.connectedNetworks = connected;
         panel.availableNetworks = available;
+        panel.allNetworks = connected.concat(available);
         panel.networksChanged();
     }
 
@@ -146,7 +133,6 @@ PanelWindow {
         function onValuesChanged(): void { panel.rebuild(); }
     }
 
-    // Списки сетей меняются при сканировании (AP пришли/ушли).
     Instantiator {
         model: Networking.devices
         delegate: Connections {
@@ -156,7 +142,6 @@ PanelWindow {
         }
     }
 
-    // Пересбор при смене connected/силы/имени у каждой сети.
     Instantiator {
         model: panel.connectedNetworks
         delegate: Connections {
@@ -178,16 +163,12 @@ PanelWindow {
         }
     }
 
-    // ---- Питание Wi-Fi -----------------------------------------------------
-
     property bool wifiOn: Networking.wifiEnabled
 
     Connections {
         target: Networking
         function onWifiEnabledChanged(): void { panel.rebuild(); }
     }
-
-    // ---- Вёрстка -----------------------------------------------------------
 
     Rectangle {
         anchors.fill: parent
@@ -238,7 +219,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     width: implicitWidth
                     height: implicitHeight
-                    text: "\uf002"       // nf-fa-search
+                    text: "\uf002"
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: 14
                     color: scanButton.scanning ? accentColor : fgColor
@@ -263,7 +244,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     width: implicitWidth
                     height: implicitHeight
-                    text: "\u{f0425}"   // nf-md-power
+                    text: "\u{f0425}"
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: 14
                     color: wifiOn ? accentColor : fgColor
@@ -294,21 +275,8 @@ PanelWindow {
 
                 WifiSection {
                     width: parent.width
-                    heading: "Подключённые"
-                    networks: panel.connectedNetworks
-                    emptyText: "Нет подключённых сетей"
-                    connectivity: panel.connectivity
-                    portalUrl: panel.portalUrl
-                    bgColor: panel.bgColor
-                    fgColor: panel.fgColor
-                    accentColor: panel.accentColor
-                    borderColor: panel.borderColor
-                }
-
-                WifiSection {
-                    width: parent.width
-                    heading: "Доступные"
-                    networks: panel.availableNetworks
+                    heading: ""
+                    networks: panel.allNetworks
                     emptyText: "Нет доступных сетей"
                     connectivity: panel.connectivity
                     portalUrl: panel.portalUrl

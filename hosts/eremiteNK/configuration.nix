@@ -21,8 +21,6 @@
   networking.networkmanager = {
     enable = true;
 
-    # Проверка связности нужна виджету Wi-Fi: без неё Networking.connectivity
-    # всегда Unknown и не различить «нет интернета» / captive-портал.
     settings = {
       connectivity = {
         enabled = true;

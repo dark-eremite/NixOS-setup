@@ -55,13 +55,6 @@ ShellRoot {
         }
     }
 
-    // ---- Wi-Fi (Quickshell.Networking / NetworkManager) ---------------------
-    //
-    // Иконка трея — ОДИН снимок состояния (wifiGlyph/wifiColor), который
-    // обновляется только из refreshWifi(): по таймеру раз в 30 с и по
-    // ключевым сигналам (включили/выключили радио, подключились, ethernet).
-    // Живой Networking.connectivity / signalStrength НЕ биндим напрямую,
-    // иначе NM дёргал бы иконку при каждом изменении Strength.
     readonly property var wifiGlyphs: [
         "\u{f091f}", "\u{f0922}", "\u{f0925}", "\u{f0928}"
     ]
@@ -71,16 +64,15 @@ ShellRoot {
     readonly property var wifiLockGlyphs: [
         "\u{f0921}", "\u{f0924}", "\u{f0927}", "\u{f092a}"
     ]
-    readonly property string wifiOffGlyph: "\u{f092e}"        // nf-md-wifi_strength_off_outline
-    readonly property string wifiOutlineGlyph: "\u{f092f}"    // nf-md-wifi_strength_outline
-    readonly property string ethernetGlyph: "\u{f0201}"       // nf-md-ethernet_cable
+    readonly property string wifiOffGlyph: "\u{f092e}"
+    readonly property string wifiOutlineGlyph: "\u{f092f}"
+    readonly property string ethernetGlyph: "\u{f0201}"
 
-    property int wifiBars: 1            // 1..4, снимок signalStrength 0..1
-    property int wifiConnectivity: 0    // снимок NetworkConnectivity (0..4)
+    property int wifiBars: 1
+    property int wifiConnectivity: 0
     property string wifiGlyph: wifiOffGlyph
     property color wifiColor: fgColor
 
-    // 0..1 -> 1..4. Сигнал 0 всё равно даёт 1 (не рисуем «пустую» иконку).
     function barsFor(signal): int {
         var s = Math.max(0, Math.min(1, signal || 0));
         return Math.max(1, Math.min(4, Math.ceil(s * 4)));
@@ -109,13 +101,9 @@ ShellRoot {
             if (active) break;
         }
 
-        // Снимок связности нужен и панели: без сети это Unknown, иначе
-        // WifiSection унаследовала бы старый Portal/Alert.
         var conn = Networking.connectivity;
         root.wifiConnectivity = conn;
 
-        // Приоритет: ethernet-иконка ТОЛЬКО когда Wi-Fi выключен и кабель
-        // подключён. Во всех остальных случаях Wi-Fi главнее.
         if (!wifiOn && ethConnected) {
             root.wifiGlyph = root.ethernetGlyph;
             root.wifiColor = root.accentColor;
@@ -132,8 +120,6 @@ ShellRoot {
             return;
         }
 
-        // Подключены: акцент + сила сигнала 1..4. Вариант иконки зависит
-        // от связности: Portal -> *_lock, Limited/None -> *_alert.
         var b = root.barsFor(active.signalStrength) - 1;
         var glyph = root.wifiGlyphs[b];
         if (conn === NetworkConnectivity.Portal)
@@ -147,8 +133,6 @@ ShellRoot {
         root.wifiColor = root.accentColor;
     }
 
-    // ConnectivityCheckUri живёт только в D-Bus NetworkManager, синглтон
-    // Quickshell его не отдаёт. Читаем для кнопки портала в WifiSection.
     property string wifiPortalUrl: ""
 
     Process {
@@ -170,9 +154,6 @@ ShellRoot {
         }
     }
 
-    // Опрос состояния раз в 30 с. checkConnectivity() будит NM (важно для
-    // портала: после авторизации состояние само не меняется), затем снимаем
-    // signalStrength/connectivity в иконку и обновляем URL портала.
     Timer {
         id: wifiPollTimer
         interval: 30000
@@ -197,9 +178,6 @@ ShellRoot {
         function onValuesChanged(): void { root.refreshWifi(); }
     }
 
-    // Ethernet: появление/пропажа кабеля меняет приоритет иконки.
-    // Снимок трея по сетям обновляет WifiPanel через onNetworksChanged:
-    // её rebuild() — надёжная точка, где список AP уже загружен.
     Instantiator {
         model: Networking.devices
         delegate: Connections {
@@ -333,12 +311,8 @@ ShellRoot {
         fgColor: root.fgColor
         accentColor: root.accentColor
         borderColor: root.borderColor
-        // Снимок связности и URL портала из 30-секундного опроса в ShellRoot.
         connectivity: root.wifiConnectivity
         portalUrl: root.wifiPortalUrl
-        // rebuild() панели — надёжный триггер: список сетей NetworkManager
-        // приходит асинхронно, и прямой Instantiator в ShellRoot его ловит
-        // не всегда. Обновляем снимок иконки вместе со списком панели.
         onNetworksChanged: root.refreshWifi()
     }
 
@@ -457,7 +431,6 @@ ShellRoot {
             id: trayRow
             anchors {
                 right: parent.right
-                rightMargin: 10
                 verticalCenter: parent.verticalCenter
             }
             spacing: bar.gap
@@ -474,7 +447,7 @@ ShellRoot {
                 ]
 
                 delegate: Item {
-                    width: 24
+                    width: isNixos ? bar.height : 24
                     height: bar.height
 
                     property bool isBt: modelData.label === "bluetooth"
@@ -482,22 +455,13 @@ ShellRoot {
                     property bool isNixos: modelData.label === "nixos"
                     property string icon: isBt ? root.btGlyph
                         : (isWifi ? root.wifiGlyph : modelData.glyph)
-                    // Динамические иконки красятся акцентом только когда
-                    // «активны» (подключение / ethernet), иначе fgColor.
-                    // У NixOS — контрастный цвет поверх акцентного квадрата.
                     property color tint: isNixos ? onAccentColor
                         : (isBt ? root.btColor
                         : (isWifi ? root.wifiColor : fgColor))
 
-                    // NixOS badge: a solid accent square filled with the SAME
-                    // color as the workspace slider (matugen `primary`).
-                    // It spans the FULL height of the bar, like the slider.
-                    // No radius, no border: it mirrors the slider's fill.
-                    // Declared before Text so the glyph draws on top of it.
-                    // No MouseArea / action on this item yet, by request.
                     Rectangle {
                         anchors.centerIn: parent
-                        width: 24
+                        width: bar.height
                         height: bar.height
                         visible: parent.isNixos
                         color: accentColor

@@ -92,9 +92,6 @@ Column {
                     Text {
                         width: parent.width
                         text: modelData.address
-                            // Quickshell отдаёт battery как долю 0..1
-                            // (BlueZ Percentage / 100), поэтому 100% = 1.0.
-                            // Раньше Math.round(1.0) давал «1%».
                             + (modelData.batteryAvailable
                                ? " · " + Math.round(modelData.battery * 100) + "%" : "")
                         font.family: "JetBrainsMono Nerd Font"
