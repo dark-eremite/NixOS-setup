@@ -80,6 +80,7 @@ binds {
     Mod+Q { close-window; }
     Mod+W { spawn "random-wallpaper"; }
     Mod+B { spawn "quickshell" "ipc" "call" "bluetooth" "toggle"; }
+    Mod+I { spawn "quickshell" "ipc" "call" "wifi" "toggle"; }
 
     Mod+O repeat=false { toggle-overview; }
 

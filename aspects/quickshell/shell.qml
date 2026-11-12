@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
+import Quickshell.Networking
 import qs
 
 ShellRoot {
@@ -35,7 +36,10 @@ ShellRoot {
         root.btConnected = n > 0;
     }
 
-    Component.onCompleted: refreshBt()
+    Component.onCompleted: {
+        refreshBt();
+        refreshWifi();
+    }
 
     Connections {
         target: Bluetooth.devices
@@ -48,6 +52,160 @@ ShellRoot {
             required property var modelData
             target: modelData
             function onConnectedChanged(): void { root.refreshBt(); }
+        }
+    }
+
+    // ---- Wi-Fi (Quickshell.Networking / NetworkManager) ---------------------
+    //
+    // Иконка трея — ОДИН снимок состояния (wifiGlyph/wifiColor), который
+    // обновляется только из refreshWifi(): по таймеру раз в 30 с и по
+    // ключевым сигналам (включили/выключили радио, подключились, ethernet).
+    // Живой Networking.connectivity / signalStrength НЕ биндим напрямую,
+    // иначе NM дёргал бы иконку при каждом изменении Strength.
+    readonly property var wifiGlyphs: [
+        "\u{f091f}", "\u{f0922}", "\u{f0925}", "\u{f0928}"
+    ]
+    readonly property var wifiAlertGlyphs: [
+        "\u{f0920}", "\u{f0923}", "\u{f0926}", "\u{f0929}"
+    ]
+    readonly property var wifiLockGlyphs: [
+        "\u{f0921}", "\u{f0924}", "\u{f0927}", "\u{f092a}"
+    ]
+    readonly property string wifiOffGlyph: "\u{f092e}"        // nf-md-wifi_strength_off_outline
+    readonly property string wifiOutlineGlyph: "\u{f092f}"    // nf-md-wifi_strength_outline
+    readonly property string ethernetGlyph: "\u{f0201}"       // nf-md-ethernet_cable
+
+    property int wifiBars: 1            // 1..4, снимок signalStrength 0..1
+    property int wifiConnectivity: 0    // снимок NetworkConnectivity (0..4)
+    property string wifiGlyph: wifiOffGlyph
+    property color wifiColor: fgColor
+
+    // 0..1 -> 1..4. Сигнал 0 всё равно даёт 1 (не рисуем «пустую» иконку).
+    function barsFor(signal): int {
+        var s = Math.max(0, Math.min(1, signal || 0));
+        return Math.max(1, Math.min(4, Math.ceil(s * 4)));
+    }
+
+    function refreshWifi(): void {
+        var devs = Networking.devices ? Networking.devices.values : [];
+        var wifiOn = Networking.wifiEnabled;
+        var active = null;
+        var ethConnected = false;
+
+        for (var i = 0; i < devs.length; i++) {
+            var d = devs[i];
+            if (!d) continue;
+            if (d.type === DeviceType.Wired && d.connected)
+                ethConnected = true;
+            if (d.type !== DeviceType.Wifi || !wifiOn) continue;
+
+            var nets = d.networks ? d.networks.values : [];
+            for (var j = 0; j < nets.length; j++) {
+                if (nets[j] && nets[j].connected) {
+                    active = nets[j];
+                    break;
+                }
+            }
+            if (active) break;
+        }
+
+        // Снимок связности нужен и панели: без сети это Unknown, иначе
+        // WifiSection унаследовала бы старый Portal/Alert.
+        var conn = Networking.connectivity;
+        root.wifiConnectivity = conn;
+
+        // Приоритет: ethernet-иконка ТОЛЬКО когда Wi-Fi выключен и кабель
+        // подключён. Во всех остальных случаях Wi-Fi главнее.
+        if (!wifiOn && ethConnected) {
+            root.wifiGlyph = root.ethernetGlyph;
+            root.wifiColor = root.accentColor;
+            return;
+        }
+        if (!wifiOn) {
+            root.wifiGlyph = root.wifiOffGlyph;
+            root.wifiColor = root.fgColor;
+            return;
+        }
+        if (!active) {
+            root.wifiGlyph = root.wifiOutlineGlyph;
+            root.wifiColor = root.fgColor;
+            return;
+        }
+
+        // Подключены: акцент + сила сигнала 1..4. Вариант иконки зависит
+        // от связности: Portal -> *_lock, Limited/None -> *_alert.
+        var b = root.barsFor(active.signalStrength) - 1;
+        var glyph = root.wifiGlyphs[b];
+        if (conn === NetworkConnectivity.Portal)
+            glyph = root.wifiLockGlyphs[b];
+        else if (conn === NetworkConnectivity.Limited
+                 || conn === NetworkConnectivity.None)
+            glyph = root.wifiAlertGlyphs[b];
+
+        root.wifiBars = b + 1;
+        root.wifiGlyph = glyph;
+        root.wifiColor = root.accentColor;
+    }
+
+    // ConnectivityCheckUri живёт только в D-Bus NetworkManager, синглтон
+    // Quickshell его не отдаёт. Читаем для кнопки портала в WifiSection.
+    property string wifiPortalUrl: ""
+
+    Process {
+        id: portalUriProc
+        running: false
+        command: [
+            "busctl", "get-property",
+            "org.freedesktop.NetworkManager",
+            "/org/freedesktop/NetworkManager",
+            "org.freedesktop.NetworkManager",
+            "ConnectivityCheckUri"
+        ]
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                var m = ("" + this.text).match(/s\s+"([^"]*)"/);
+                root.wifiPortalUrl = m ? m[1] : "";
+            }
+        }
+    }
+
+    // Опрос состояния раз в 30 с. checkConnectivity() будит NM (важно для
+    // портала: после авторизации состояние само не меняется), затем снимаем
+    // signalStrength/connectivity в иконку и обновляем URL портала.
+    Timer {
+        id: wifiPollTimer
+        interval: 30000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            Networking.checkConnectivity();
+            root.refreshWifi();
+            portalUriProc.running = true;
+        }
+    }
+
+    Connections {
+        target: Networking
+        function onWifiEnabledChanged(): void { root.refreshWifi(); }
+        function onConnectivityChanged(): void { root.refreshWifi(); }
+    }
+
+    Connections {
+        target: Networking.devices
+        function onValuesChanged(): void { root.refreshWifi(); }
+    }
+
+    // Ethernet: появление/пропажа кабеля меняет приоритет иконки.
+    // Снимок трея по сетям обновляет WifiPanel через onNetworksChanged:
+    // её rebuild() — надёжная точка, где список AP уже загружен.
+    Instantiator {
+        model: Networking.devices
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onConnectedChanged(): void { root.refreshWifi(); }
         }
     }
 
@@ -167,6 +325,21 @@ ShellRoot {
         fgColor: root.fgColor
         accentColor: root.accentColor
         borderColor: root.borderColor
+    }
+
+    WifiPanel {
+        id: wifiPanel
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+        // Снимок связности и URL портала из 30-секундного опроса в ShellRoot.
+        connectivity: root.wifiConnectivity
+        portalUrl: root.wifiPortalUrl
+        // rebuild() панели — надёжный триггер: список сетей NetworkManager
+        // приходит асинхронно, и прямой Instantiator в ShellRoot его ловит
+        // не всегда. Обновляем снимок иконки вместе со списком панели.
+        onNetworksChanged: root.refreshWifi()
     }
 
     PanelWindow {
@@ -296,7 +469,7 @@ ShellRoot {
                     { glyph: "\uf130", label: "microphone" },
                     { glyph: "\uf028", label: "volume" },
                     { glyph: root.btGlyph, label: "bluetooth", dynamic: true },
-                    { glyph: "\uf1eb", label: "wifi" },
+                    { glyph: root.wifiGlyph, label: "wifi", dynamic: true },
                     { glyph: "\uf313", label: "nixos" }
                 ]
 
@@ -305,8 +478,30 @@ ShellRoot {
                     height: bar.height
 
                     property bool isBt: modelData.label === "bluetooth"
-                    property string icon: isBt ? root.btGlyph : modelData.glyph
-                    property color tint: isBt ? root.btColor : fgColor
+                    property bool isWifi: modelData.label === "wifi"
+                    property bool isNixos: modelData.label === "nixos"
+                    property string icon: isBt ? root.btGlyph
+                        : (isWifi ? root.wifiGlyph : modelData.glyph)
+                    // Динамические иконки красятся акцентом только когда
+                    // «активны» (подключение / ethernet), иначе fgColor.
+                    // У NixOS — контрастный цвет поверх акцентного квадрата.
+                    property color tint: isNixos ? onAccentColor
+                        : (isBt ? root.btColor
+                        : (isWifi ? root.wifiColor : fgColor))
+
+                    // NixOS badge: a solid accent square filled with the SAME
+                    // color as the workspace slider (matugen `primary`).
+                    // It spans the FULL height of the bar, like the slider.
+                    // No radius, no border: it mirrors the slider's fill.
+                    // Declared before Text so the glyph draws on top of it.
+                    // No MouseArea / action on this item yet, by request.
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 24
+                        height: bar.height
+                        visible: parent.isNixos
+                        color: accentColor
+                    }
 
                     Text {
                         anchors.centerIn: parent
@@ -320,9 +515,12 @@ ShellRoot {
 
                     MouseArea {
                         anchors.fill: parent
-                        enabled: parent.isBt
+                        enabled: parent.isBt || parent.isWifi
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: btPanel.shown = !btPanel.shown
+                        onClicked: {
+                            if (parent.isBt) btPanel.shown = !btPanel.shown;
+                            else wifiPanel.shown = !wifiPanel.shown;
+                        }
                     }
                 }
             }

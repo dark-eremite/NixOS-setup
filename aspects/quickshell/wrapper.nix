@@ -8,6 +8,8 @@ let
     cp ${./shell.qml} $out/shell.qml
     cp ${./BluetoothPanel.qml} $out/BluetoothPanel.qml
     cp ${./BtSection.qml} $out/BtSection.qml
+    cp ${./WifiPanel.qml} $out/WifiPanel.qml
+    cp ${./WifiSection.qml} $out/WifiSection.qml
   '';
 
   wm = inputs.wrapper-manager.lib {

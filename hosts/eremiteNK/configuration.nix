@@ -18,7 +18,20 @@
   };
   boot.loader.efi.canTouchEfiVariables = true;
 
-  networking.networkmanager.enable = true;
+  networking.networkmanager = {
+    enable = true;
+
+    # Проверка связности нужна виджету Wi-Fi: без неё Networking.connectivity
+    # всегда Unknown и не различить «нет интернета» / captive-портал.
+    settings = {
+      connectivity = {
+        enabled = true;
+        uri = "http://nmcheck.gnome.org/check_network_status.txt";
+        response = "NetworkManager is online";
+        interval = 300;
+      };
+    };
+  };
 
   time.timeZone = "Europe/Moscow";
 
