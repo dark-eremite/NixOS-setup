@@ -18,3 +18,7 @@ output_path = "~/.config/quickshell/colors.qml"
 [templates.alacritty]
 input_path = "alacritty.toml.j2"
 output_path = "~/.config/alacritty/alacritty.toml"
+
+[templates.hyprlock]
+input_path = "hyprlock.conf.j2"
+output_path = "~/.config/hyprlock/colors.conf"

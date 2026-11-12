@@ -299,6 +299,7 @@ ShellRoot {
 
     BluetoothPanel {
         id: btPanel
+        topInset: bar.margins.top + bar.implicitHeight
         bgColor: root.bgColor
         fgColor: root.fgColor
         accentColor: root.accentColor
@@ -307,6 +308,7 @@ ShellRoot {
 
     WifiPanel {
         id: wifiPanel
+        topInset: bar.margins.top + bar.implicitHeight
         bgColor: root.bgColor
         fgColor: root.fgColor
         accentColor: root.accentColor

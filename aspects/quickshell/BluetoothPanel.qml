@@ -19,6 +19,9 @@ PanelWindow {
     color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
 
     aboveWindows: true
+    exclusionMode: ExclusionMode.Ignore
+
+    property real topInset: 0
 
     property color bgColor: "#111318"
     property color fgColor: "#e1e2e9"
@@ -35,8 +38,8 @@ PanelWindow {
 
     property bool shown: false
     property bool slidingOut: false
-    readonly property real hiddenTop: -(implicitHeight + 8)
-    readonly property real shownTop: 8
+    readonly property real hiddenTop: -(implicitHeight + 8 + topInset)
+    readonly property real shownTop: 8 + topInset
     property real slide: hiddenTop
 
     visible: shown || slidingOut

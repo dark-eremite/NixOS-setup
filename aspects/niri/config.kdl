@@ -54,10 +54,6 @@ overview {
 prefer-no-csd
 screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 
-spawn-at-startup "awww-daemon"
-spawn-at-startup "quickshell"
-spawn-sh-at-startup "update-theme"
-
 workspace "ws-1"
 workspace "ws-2"
 workspace "ws-3"

@@ -26,6 +26,9 @@ PanelWindow {
     property color borderColor: "#59FFFFFF"
 
     focusable: true
+    exclusionMode: ExclusionMode.Ignore
+
+    property real topInset: 0
 
     property int connectivity: 0
     property string portalUrl: ""
@@ -36,8 +39,8 @@ PanelWindow {
 
     property bool shown: false
     property bool slidingOut: false
-    readonly property real hiddenTop: -(implicitHeight + 8)
-    readonly property real shownTop: 8
+    readonly property real hiddenTop: -(implicitHeight + 8 + topInset)
+    readonly property real shownTop: 8 + topInset
     property real slide: hiddenTop
 
     visible: shown || slidingOut

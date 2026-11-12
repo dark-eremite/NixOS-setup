@@ -17,6 +17,7 @@
         cp ${../niri/colors.kdl.j2} $out/colors.kdl.j2
         cp ${../quickshell/colors.qml.j2} $out/colors.qml.j2
         cp ${./alacritty.toml} $out/alacritty.toml.j2
+        cp ${../lockscreen/colors.conf.j2} $out/hyprlock.conf.j2
       '';
       matugenConfig = "${matugenDir}/matugen.toml";
 
@@ -108,6 +109,7 @@
               "${u.home}/.local/state/darkman" \
               "${u.home}/.config/niri" \
               "${u.home}/.config/quickshell" \
+              "${u.home}/.config/hyprlock" \
               "${u.home}/.wallpapers/light" \
               "${u.home}/.wallpapers/dark"
             if [ ! -f "${stateFile}" ]; then
