@@ -7,6 +7,7 @@ Column {
     property var nodes: []
     property string emptyText: ""
     property var activeNode: null
+    property string glyph: "\u{f04c3}"
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
@@ -66,7 +67,7 @@ Column {
                 Text {
                     width: 20
                     height: parent.height
-                    text: "\u{f04c3}"
+                    text: section.glyph
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: 14
                     color: active ? section.accentColor : section.fgColor

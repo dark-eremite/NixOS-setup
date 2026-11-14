@@ -14,6 +14,7 @@ let
     cp ${./VolumeSlider.qml} $out/VolumeSlider.qml
     cp ${./OutputSection.qml} $out/OutputSection.qml
     cp ${./StreamSection.qml} $out/StreamSection.qml
+    cp ${./MicrophonePanel.qml} $out/MicrophonePanel.qml
   '';
 
   wm = inputs.wrapper-manager.lib {

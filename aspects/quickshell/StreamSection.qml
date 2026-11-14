@@ -7,6 +7,7 @@ Column {
     property string heading: ""
     property var streams: []
     property string emptyText: ""
+    property string glyph: "\u{f08c6}"
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
@@ -71,7 +72,7 @@ Column {
                     Text {
                         width: 16
                         height: parent.height
-                        text: "\u{f08c6}"
+                        text: section.glyph
                         font.family: "JetBrainsMono Nerd Font"
                         font.pixelSize: 11
                         color: section.fgColor

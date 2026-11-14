@@ -63,9 +63,10 @@ workspace "ws-6"
 workspace "ws-7"
 
 gestures {
-    dnd-edge-workspace-switch {
-        trigger-height 0
-    }
+    // DnD edge scrolling is left at its default (trigger-height 50): it is
+    // needed to reach all seven workspaces in the overview while dragging a
+    // window. It never creates workspaces — only scrolls the view. Creating a
+    // new workspace on drop is prevented by the no-new-workspaces.patch.
     hot-corners {
         off
     }
@@ -78,6 +79,7 @@ binds {
     Mod+B { spawn "quickshell" "ipc" "call" "bluetooth" "toggle"; }
     Mod+I { spawn "quickshell" "ipc" "call" "wifi" "toggle"; }
     Mod+A { spawn "quickshell" "ipc" "call" "audio" "toggle"; }
+    Mod+M { spawn "quickshell" "ipc" "call" "microphone" "toggle"; }
 
     Mod+O repeat=false { toggle-overview; }
 

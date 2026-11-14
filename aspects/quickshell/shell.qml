@@ -36,7 +36,14 @@ ShellRoot {
     property string audioGlyph: audioMuted ? "\u{f0581}" : "\uf028"
     property color audioColor: audioActive ? accentColor : fgColor
 
+    property var micSource: Pipewire.defaultAudioSource
+    property bool micMuted: micSource && micSource.audio
+        ? micSource.audio.muted : true
+    property string micGlyph: micMuted ? "\u{f036d}" : "\u{f036c}"
+    property color micColor: micMuted ? fgColor : accentColor
+
     PwObjectTracker { objects: audioSink ? [ audioSink ] : [] }
+    PwObjectTracker { objects: micSource ? [ micSource ] : [] }
 
     function refreshBt(): void {
         var n = 0;
@@ -338,6 +345,15 @@ ShellRoot {
         borderColor: root.borderColor
     }
 
+    MicrophonePanel {
+        id: micPanel
+        topInset: bar.margins.top + bar.implicitHeight
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+    }
+
     PanelWindow {
         id: bar
 
@@ -461,7 +477,7 @@ ShellRoot {
             Repeater {
                 model: [
                     { glyph: "\uf185", label: "brightness" },
-                    { glyph: "\uf130", label: "microphone" },
+                    { glyph: root.micGlyph, label: "microphone", dynamic: true },
                     { glyph: root.audioGlyph, label: "volume", dynamic: true },
                     { glyph: root.btGlyph, label: "bluetooth", dynamic: true },
                     { glyph: root.wifiGlyph, label: "wifi", dynamic: true },
@@ -475,14 +491,17 @@ ShellRoot {
                     property bool isBt: modelData.label === "bluetooth"
                     property bool isWifi: modelData.label === "wifi"
                     property bool isVolume: modelData.label === "volume"
+                    property bool isMic: modelData.label === "microphone"
                     property bool isNixos: modelData.label === "nixos"
                     property string icon: isBt ? root.btGlyph
                         : (isWifi ? root.wifiGlyph
-                        : (isVolume ? root.audioGlyph : modelData.glyph))
+                        : (isVolume ? root.audioGlyph
+                        : (isMic ? root.micGlyph : modelData.glyph)))
                     property color tint: isNixos ? onAccentColor
                         : (isBt ? root.btColor
                         : (isWifi ? root.wifiColor
-                        : (isVolume ? root.audioColor : fgColor)))
+                        : (isVolume ? root.audioColor
+                        : (isMic ? root.micColor : fgColor))))
 
                     Rectangle {
                         anchors.centerIn: parent
@@ -504,12 +523,14 @@ ShellRoot {
 
                     MouseArea {
                         anchors.fill: parent
-                        enabled: parent.isBt || parent.isWifi || parent.isVolume
+                        enabled: parent.isBt || parent.isWifi
+                            || parent.isVolume || parent.isMic
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
                             if (parent.isBt) btPanel.shown = !btPanel.shown;
                             else if (parent.isWifi) wifiPanel.shown = !wifiPanel.shown;
-                            else audioPanel.shown = !audioPanel.shown;
+                            else if (parent.isVolume) audioPanel.shown = !audioPanel.shown;
+                            else micPanel.shown = !micPanel.shown;
                         }
                     }
                 }
