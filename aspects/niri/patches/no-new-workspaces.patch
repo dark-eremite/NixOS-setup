@@ -1,0 +1,94 @@
+--- a/src/layout/monitor.rs
++++ b/src/layout/monitor.rs
+@@ -1588,49 +1588,55 @@
+         &self,
+         pos_within_output: Point<f64, Logical>,
+     ) -> (InsertWorkspace, Rectangle<f64, Logical>) {
+-        let mut iter = self.workspaces_with_render_geo_idx();
+-
+-        let dummy = Rectangle::default();
+-
+-        // Monitors always have at least one workspace.
+-        let ((idx, ws), geo) = iter.next().unwrap();
+-
+-        // Check if above first.
+-        if pos_within_output.y < geo.loc.y {
+-            return (InsertWorkspace::NewAt(idx), dummy);
+-        }
++        // Only ever target one of the persistent, named "template" workspaces.
++        //
++        // Upstream niri creates a brand-new workspace when an interactively
++        // moved window is dropped in the gap between two workspaces (or above
++        // the first / below the last one): `insert_position()` returns
++        // `InsertWorkspace::NewAt`, and `interactive_move_end()` calls
++        // `add_workspace_at()`. With a fixed set of seven named workspaces this
++        // shows up as an unwanted "intermediate" workspace.
++        //
++        // Instead, snap every drop to the nearest existing named workspace, so
++        // a window can only move between the template workspaces. If no named
++        // workspaces exist at all, keep the original nearest-workspace choice.
++        //
++        // Use the full (unculled) render geometry so hitting the trailing,
++        // always-present empty workspace still snaps to a named one.
++        let geos: Vec<_> = self
++            .workspaces_render_geo()
++            .take(self.workspaces.len())
++            .collect();
++
++        let has_named = self.workspaces.iter().any(|ws| ws.name().is_some());
++
++        let mut best: Option<usize> = None;
++        let mut best_dist = f64::INFINITY;
++
++        for (idx, ws) in self.workspaces.iter().enumerate() {
++            if has_named && ws.name().is_none() {
++                continue;
++            }
+ 
+-        let contains = move |geo: Rectangle<f64, Logical>| {
+-            geo.loc.y <= pos_within_output.y && pos_within_output.y < geo.loc.y + geo.size.h
+-        };
+-
+-        // Check first.
+-        if contains(geo) {
+-            return (InsertWorkspace::Existing(ws.id()), geo);
+-        }
++            let geo = geos[idx];
+ 
+-        let mut last_geo = geo;
+-        let mut last_idx = idx;
+-        for ((idx, ws), geo) in iter {
+-            // Check gap above.
+-            let gap_loc = Point::from((last_geo.loc.x, last_geo.loc.y + last_geo.size.h));
+-            let gap_size = Size::from((geo.size.w, geo.loc.y - gap_loc.y));
+-            let gap_geo = Rectangle::new(gap_loc, gap_size);
+-            if contains(gap_geo) {
+-                return (InsertWorkspace::NewAt(idx), dummy);
++            // A named workspace containing the pointer always wins.
++            if geo.loc.y <= pos_within_output.y
++                && pos_within_output.y < geo.loc.y + geo.size.h
++            {
++                best = Some(idx);
++                break;
+             }
+ 
+-            // Check workspace itself.
+-            if contains(geo) {
+-                return (InsertWorkspace::Existing(ws.id()), geo);
++            let dist = (geo.loc.y + geo.size.h / 2. - pos_within_output.y).abs();
++            if dist < best_dist {
++                best_dist = dist;
++                best = Some(idx);
+             }
+-
+-            last_geo = geo;
+-            last_idx = idx;
+         }
+ 
+-        // Anything below.
+-        (InsertWorkspace::NewAt(last_idx + 1), dummy)
++        let idx = best.expect("monitor always has at least one workspace");
++        (InsertWorkspace::Existing(self.workspaces[idx].id()), geos[idx])
+     }
+ 
+     pub fn render_above_top_layer(&self) -> bool {
