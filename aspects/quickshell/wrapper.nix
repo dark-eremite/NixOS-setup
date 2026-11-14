@@ -10,6 +10,10 @@ let
     cp ${./BtSection.qml} $out/BtSection.qml
     cp ${./WifiPanel.qml} $out/WifiPanel.qml
     cp ${./WifiSection.qml} $out/WifiSection.qml
+    cp ${./AudioPanel.qml} $out/AudioPanel.qml
+    cp ${./VolumeSlider.qml} $out/VolumeSlider.qml
+    cp ${./OutputSection.qml} $out/OutputSection.qml
+    cp ${./StreamSection.qml} $out/StreamSection.qml
   '';
 
   wm = inputs.wrapper-manager.lib {

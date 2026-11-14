@@ -3,8 +3,6 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-export PATH="/run/current-system/sw/bin:$PATH"
-
 WALL_LINK="$HOME/.wallpapers/current"
 FALLBACK="@FALLBACK@"
 LOCK_CONFIG="@LOCK_CONFIG@"

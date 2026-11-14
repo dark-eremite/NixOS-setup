@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 import Quickshell.Networking
+import Quickshell.Services.Pipewire
 import qs
 
 ShellRoot {
@@ -26,6 +27,16 @@ ShellRoot {
     property string btGlyph: !btEnabled ? "\u{f00b2}"
         : (btConnected ? "\u{f00b1}" : "\uf294")
     property color btColor: btConnected ? accentColor : fgColor
+
+    property var audioSink: Pipewire.defaultAudioSink
+    property bool audioMuted: audioSink && audioSink.audio
+        ? audioSink.audio.muted : false
+    property bool audioActive: audioSink && audioSink.audio
+        ? (audioSink.audio.volume > 0 && !audioSink.audio.muted) : false
+    property string audioGlyph: audioMuted ? "\u{f0581}" : "\uf028"
+    property color audioColor: audioActive ? accentColor : fgColor
+
+    PwObjectTracker { objects: audioSink ? [ audioSink ] : [] }
 
     function refreshBt(): void {
         var n = 0;
@@ -318,6 +329,15 @@ ShellRoot {
         onNetworksChanged: root.refreshWifi()
     }
 
+    AudioPanel {
+        id: audioPanel
+        topInset: bar.margins.top + bar.implicitHeight
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+    }
+
     PanelWindow {
         id: bar
 
@@ -442,7 +462,7 @@ ShellRoot {
                 model: [
                     { glyph: "\uf185", label: "brightness" },
                     { glyph: "\uf130", label: "microphone" },
-                    { glyph: "\uf028", label: "volume" },
+                    { glyph: root.audioGlyph, label: "volume", dynamic: true },
                     { glyph: root.btGlyph, label: "bluetooth", dynamic: true },
                     { glyph: root.wifiGlyph, label: "wifi", dynamic: true },
                     { glyph: "\uf313", label: "nixos" }
@@ -454,12 +474,15 @@ ShellRoot {
 
                     property bool isBt: modelData.label === "bluetooth"
                     property bool isWifi: modelData.label === "wifi"
+                    property bool isVolume: modelData.label === "volume"
                     property bool isNixos: modelData.label === "nixos"
                     property string icon: isBt ? root.btGlyph
-                        : (isWifi ? root.wifiGlyph : modelData.glyph)
+                        : (isWifi ? root.wifiGlyph
+                        : (isVolume ? root.audioGlyph : modelData.glyph))
                     property color tint: isNixos ? onAccentColor
                         : (isBt ? root.btColor
-                        : (isWifi ? root.wifiColor : fgColor))
+                        : (isWifi ? root.wifiColor
+                        : (isVolume ? root.audioColor : fgColor)))
 
                     Rectangle {
                         anchors.centerIn: parent
@@ -481,11 +504,12 @@ ShellRoot {
 
                     MouseArea {
                         anchors.fill: parent
-                        enabled: parent.isBt || parent.isWifi
+                        enabled: parent.isBt || parent.isWifi || parent.isVolume
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
                             if (parent.isBt) btPanel.shown = !btPanel.shown;
-                            else wifiPanel.shown = !wifiPanel.shown;
+                            else if (parent.isWifi) wifiPanel.shown = !wifiPanel.shown;
+                            else audioPanel.shown = !audioPanel.shown;
                         }
                     }
                 }

@@ -20,9 +20,8 @@
         printf 'P6\n1 1\n255\n\36\36\36' > $out/fallback.ppm
       '';
 
-      bootSession = pkgs.writeShellApplication {
-        name = "boot-session";
-        runtimeInputs = with pkgs; [
+      bootSession = pkgs.writeShellScriptBin "boot-session" ''
+        export PATH="$PATH:${lib.makeBinPath (with pkgs; [
           coreutils
           awww
           niri
@@ -31,13 +30,12 @@
           gnused
           systemd
           bash
-        ];
-        checkPhase = "";
-        text = builtins.replaceStrings
+        ])}"
+        ${builtins.replaceStrings
           [ "@FALLBACK@" "@LOCK_CONFIG@" ]
           [ "${fallbackWallpaper}/fallback.ppm" "${hyprlockConf}" ]
-          (builtins.replaceStrings [ "#!/usr/bin/env bash" ] [ "" ] (builtins.readFile ./scripts/boot-session.sh));
-      };
+          (builtins.replaceStrings [ "#!/usr/bin/env bash" ] [ "" ] (builtins.readFile ./scripts/boot-session.sh))}
+      '';
     in
     {
       environment.systemPackages = with pkgs; [ hyprlock bootSession ];
