@@ -20,6 +20,10 @@ Column {
     property string wrongNet: ""
     property string passwordText: ""
     property bool showPassword: false
+    // Сеть с сохранённым профилем, к которой сейчас подключаемся «сразу».
+    // Нужен, чтобы отличить её connectionFailed от прочих сетей: если
+    // сохранённый пароль устарел, покажем «wrong password».
+    property string pendingKnownNet: ""
 
     signal networkSelected()
 
@@ -42,11 +46,16 @@ Column {
         return (net.name || "") + "|" + (net.address || "");
     }
 
+    // Пароль нужен только для защищённых сетей БЕЗ сохранённого профиля.
+    // NetworkManager хранит PSK в профиле (known === true) — connect()
+    // активирует его сам, повторный ввод не требуется.
     function needsPassword(net): bool {
         var s = net.security;
-        return s !== WifiSecurityType.Open
-            && s !== WifiSecurityType.Owe
-            && s !== WifiSecurityType.Unknown;
+        if (s === WifiSecurityType.Open
+            || s === WifiSecurityType.Owe
+            || s === WifiSecurityType.Unknown)
+            return false;
+        return !net.known;
     }
 
     function bars(signal): int {
@@ -86,16 +95,25 @@ Column {
 
     function handleClick(net, secured, editing): void {
         if (net.connected) {
+            section.pendingKnownNet = "";
             net.disconnect();
             section.networkSelected();
             return;
         }
         if (editing) return;
         section.networkSelected();
-        if (secured)
+        // Если сохранённый пароль уже не подошёл — не пытаемся снова,
+        // а открываем поле ввода (connectWithPsk обновит PSK в профиле).
+        if (secured || section.wrongNet === section.netKey(net)) {
+            section.pendingKnownNet = "";
             section.startEditing(net);
-        else
+        } else {
+            // Открытая сеть ИЛИ защищённая с сохранённым профилем:
+            // NM подставит PSK сам. Запоминаем known-сеть, чтобы при
+            // устаревшем пароле показать «wrong password».
+            section.pendingKnownNet = net.known ? section.netKey(net) : "";
             net.connect();
+        }
     }
 
     function openPortal(): void {
@@ -113,9 +131,22 @@ Column {
 
             function onConnectionFailed(reason): void {
                 var key = section.netKey(modelData);
-                if (section.editingNet !== key) return;
-                if (reason === ConnectionFailReason.WifiNetworkLost) return;
+                var fromEditor = section.editingNet === key;
+                var fromKnown = section.pendingKnownNet === key;
+                // Реагируем только на свои попытки: ввод пароля в поле
+                // либо авто-подключение к сети с сохранённым профилем.
+                if (!fromEditor && !fromKnown) return;
+                // «Сеть пропала» — это не про пароль, не пугаем пользователя.
+                if (reason === ConnectionFailReason.WifiNetworkLost) {
+                    section.pendingKnownNet = "";
+                    return;
+                }
+                section.pendingKnownNet = "";
                 section.closeEditing();
+                // Сохранённый пароль устарел (или профиль без secrets):
+                // показываем «wrong password» в обычной строке. Повторный
+                // клик откроет поле, connectWithPsk обновит PSK в профиле,
+                // и сеть снова станет «знакомой» (мгновенное подключение).
                 section.wrongNet = key;
             }
 
@@ -124,6 +155,8 @@ Column {
                 if (!modelData.connected) return;
                 if (section.editingNet === key) section.closeEditing();
                 if (section.wrongNet === key) section.wrongNet = "";
+                if (section.pendingKnownNet === key)
+                    section.pendingKnownNet = "";
             }
         }
     }
