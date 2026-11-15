@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Bluetooth
 import Quickshell.Networking
 import Quickshell.Services.Pipewire
+import Quickshell.Services.Mpris
 import qs
 
 ShellRoot {
@@ -54,9 +55,81 @@ ShellRoot {
         root.btConnected = n > 0;
     }
 
+    readonly property string albumGlyph: "\u{f0025}"
+    readonly property string previousGlyph: "\u{f04ae}"
+    readonly property string playGlyph: "\u{f040a}"
+    readonly property string pauseGlyph: "\u{f03e4}"
+    readonly property string nextGlyph: "\u{f04ad}"
+
+    property var musicPlayer: null
+
+    function selectPlayer(): void {
+        var vals = Mpris.players.values;
+        var yandex = null;
+        var first = null;
+        for (var i = 0; i < vals.length; i++) {
+            var p = vals[i];
+            if (!p) continue;
+            if (!first) first = p;
+            var id = "" + p.identity;
+            var bus = "" + p.dbusName;
+            if (id.indexOf("yandex") !== -1 || bus.indexOf("yandex") !== -1) {
+                yandex = p;
+                break;
+            }
+        }
+        musicPlayer = yandex || first;
+    }
+
+    function musicPosition(): real {
+        return musicPlayer ? musicPlayer.position : 0;
+    }
+
+    function musicLength(): real {
+        return musicPlayer ? musicPlayer.length : 0;
+    }
+
+    function formatTime(seconds): string {
+        var s = Math.max(0, Math.floor(seconds || 0));
+        var m = Math.floor(s / 60);
+        var r = s % 60;
+        return "" + m + ":" + (r < 10 ? "0" : "") + r;
+    }
+
+    readonly property string musicTitle: musicPlayer ? musicPlayer.trackTitle : ""
+    readonly property string musicArtist: musicPlayer ? musicPlayer.trackArtist : ""
+    readonly property string musicArtUrl: musicPlayer ? musicPlayer.trackArtUrl : ""
+    readonly property bool musicPlaying: musicPlayer ? musicPlayer.isPlaying : false
+    readonly property bool musicCanPrevious: musicPlayer ? musicPlayer.canGoPrevious : false
+    readonly property bool musicCanNext: musicPlayer ? musicPlayer.canGoNext : false
+    readonly property bool musicCanToggle: musicPlayer ? musicPlayer.canTogglePlaying : false
+    readonly property bool musicCanSeek: musicPlayer ? musicPlayer.canSeek : false
+    readonly property bool musicHasTrack: musicTitle.length > 0
+    readonly property string musicElapsedLabel: formatTime(musicPosition())
+    readonly property string musicRemainingLabel: formatTime(Math.max(0, musicLength() - musicPosition()))
+    readonly property real musicProgress: musicLength() > 0
+        ? Math.max(0, Math.min(1, musicPosition() / musicLength())) : 0
+
+    Connections {
+        target: Mpris.players
+        function onValuesChanged(): void { root.selectPlayer(); }
+    }
+
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            if (musicPlayer)
+                musicPlayer.positionChanged();
+        }
+    }
+
     Component.onCompleted: {
         refreshBt();
         refreshWifi();
+        selectPlayer();
     }
 
     Connections {
@@ -205,6 +278,20 @@ ShellRoot {
         }
     }
 
+    readonly property var weekdayNames: [
+        "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+    ]
+
+    function pad2(n): string {
+        return (n < 10 ? "0" : "") + n;
+    }
+
+    function formatClock(d): string {
+        return pad2(d.getMonth() + 1) + "." + pad2(d.getDate())
+            + " " + weekdayNames[d.getDay()]
+            + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+    }
+
     function parseColor(s): color {
         s = ("" + s).trim();
         if (s.charAt(0) === "#")
@@ -315,6 +402,11 @@ ShellRoot {
         }
     }
 
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
+    }
+
     BluetoothPanel {
         id: btPanel
         topInset: bar.margins.top + bar.implicitHeight
@@ -352,6 +444,36 @@ ShellRoot {
         fgColor: root.fgColor
         accentColor: root.accentColor
         borderColor: root.borderColor
+    }
+
+    MusicPanel {
+        id: musicPanel
+        topInset: bar.margins.top + bar.implicitHeight
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+
+        trackTitle: root.musicTitle
+        trackArtist: root.musicArtist
+        artUrl: root.musicArtUrl
+        elapsedLabel: root.musicElapsedLabel
+        remainingLabel: root.musicRemainingLabel
+        progress: root.musicProgress
+        playing: root.musicPlaying
+        canPrevious: root.musicCanPrevious
+        canNext: root.musicCanNext
+        canToggle: root.musicCanToggle
+        canSeek: root.musicCanSeek
+        hasTrack: root.musicHasTrack
+
+        onPreviousRequested: { if (root.musicPlayer) root.musicPlayer.previous(); }
+        onToggleRequested: { if (root.musicPlayer) root.musicPlayer.togglePlaying(); }
+        onNextRequested: { if (root.musicPlayer) root.musicPlayer.next(); }
+        onSeekRequested: function (fraction) {
+            if (root.musicPlayer && root.musicLength() > 0)
+                root.musicPlayer.position = fraction * root.musicLength();
+        }
     }
 
     PanelWindow {
@@ -392,6 +514,126 @@ ShellRoot {
             color: "transparent"
             border.width: 2
             border.color: borderColor
+        }
+
+        Rectangle {
+            id: clockRect
+            anchors {
+                left: parent.left
+                verticalCenter: parent.verticalCenter
+            }
+            width: clockText.implicitWidth + 24
+            height: bar.height
+            color: accentColor
+            z: bar.squareZ
+
+            Text {
+                id: clockText
+                anchors.centerIn: parent
+                text: root.formatClock(clock.date)
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 12
+                color: onAccentColor
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
+        Rectangle {
+            id: musicWidget
+            anchors {
+                left: clockRect.right
+                leftMargin: 10
+                verticalCenter: parent.verticalCenter
+            }
+            width: 234
+            height: bar.height - 8
+            color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
+            border.width: 1
+            border.color: borderColor
+            z: bar.squareZ
+
+            Row {
+                id: musicControls
+                anchors {
+                    left: parent.left
+                    leftMargin: 4
+                    verticalCenter: parent.verticalCenter
+                }
+                spacing: 2
+
+                Repeater {
+                    model: [
+                        { glyph: root.previousGlyph, action: "prev", active: root.musicCanPrevious },
+                        { glyph: root.playGlyph, action: "toggle", active: root.musicCanToggle },
+                        { glyph: root.nextGlyph, action: "next", active: root.musicCanNext }
+                    ]
+
+                    delegate: Item {
+                        width: 22
+                        height: 24
+
+                        property string action: modelData.action
+                        property bool active: modelData.active
+                        property string glyph: action === "toggle"
+                            ? (root.musicPlaying ? root.pauseGlyph : root.playGlyph)
+                            : modelData.glyph
+
+                        Text {
+                            anchors.centerIn: parent
+                            width: implicitWidth
+                            height: implicitHeight
+                            text: parent.glyph
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 13
+                            color: parent.action === "toggle"
+                                && root.musicPlaying ? accentColor : fgColor
+                            opacity: parent.active ? 1 : 0.35
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: parent.active
+                            cursorShape: enabled ? Qt.PointingHandCursor
+                                : Qt.ArrowCursor
+                            onClicked: {
+                                if (!root.musicPlayer) return;
+                                if (parent.action === "prev")
+                                    root.musicPlayer.previous();
+                                else if (parent.action === "toggle")
+                                    root.musicPlayer.togglePlaying();
+                                else root.musicPlayer.next();
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                id: musicTitleText
+                anchors {
+                    left: musicControls.right
+                    leftMargin: 6
+                    right: parent.right
+                    rightMargin: 6
+                    verticalCenter: parent.verticalCenter
+                }
+                height: parent.height
+                text: root.musicHasTrack ? root.musicTitle : "Нет музыки"
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 11
+                color: fgColor
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignRight
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                z: -1
+                cursorShape: Qt.PointingHandCursor
+                onClicked: musicPanel.shown = !musicPanel.shown
+            }
         }
 
         Row {

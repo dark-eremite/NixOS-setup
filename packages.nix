@@ -7,4 +7,5 @@ with pkgs; [
   opencode
   git
   vscode
+  yandex-music
 ]

@@ -80,6 +80,7 @@ binds {
     Mod+I { spawn "quickshell" "ipc" "call" "wifi" "toggle"; }
     Mod+A { spawn "quickshell" "ipc" "call" "audio" "toggle"; }
     Mod+M { spawn "quickshell" "ipc" "call" "microphone" "toggle"; }
+    Mod+P { spawn "quickshell" "ipc" "call" "music" "toggle"; }
 
     Mod+O repeat=false { toggle-overview; }
 
