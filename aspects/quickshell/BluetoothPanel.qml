@@ -11,17 +11,25 @@ PanelWindow {
         right: true
     }
     margins {
-        top: panel.slide
+        // The window is taller than the panel and reaches above the screen top,
+        // so the body can slide in from the very top edge of the screen.
+        top: -panel.bodyHeight
         right: 12
     }
     implicitWidth: 340
-    implicitHeight: 420
-    color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
+    implicitHeight: panel.travel + panel.bodyHeight
+    color: "transparent"
+    surfaceFormat.opaque: false
 
     aboveWindows: true
     exclusionMode: ExclusionMode.Ignore
 
     property real topInset: 0
+
+    // Height of the visible panel body (without the sliding space above it).
+    property int bodyHeight: 420
+    // Distance the body travels: fully off-screen (above) -> resting position.
+    readonly property int travel: bodyHeight + 8 + topInset
 
     property color bgColor: "#111318"
     property color fgColor: "#e1e2e9"
@@ -38,9 +46,10 @@ PanelWindow {
 
     property bool shown: false
     property bool slidingOut: false
-    readonly property real hiddenTop: -(implicitHeight + 8 + topInset)
-    readonly property real shownTop: 8 + topInset
-    property real slide: hiddenTop
+    // Offset of the body inside the window: -travel = hidden above the screen,
+    // 0 = resting position. The window itself never moves, only the body does,
+    // because layer-shell margins are only applied on surface commit.
+    property real slide: -travel
 
     visible: shown || slidingOut
 
@@ -66,11 +75,11 @@ PanelWindow {
         if (shown) {
             hideTimer.stop();
             slidingOut = false;
-            slide = hiddenTop;
-            slide = shownTop;
+            slide = -travel;
+            slide = 0;
         } else {
             slidingOut = true;
-            slide = hiddenTop;
+            slide = -travel;
             hideTimer.restart();
             stopScan();
         }
@@ -199,133 +208,151 @@ PanelWindow {
         function onDefaultAdapterChanged(): void { panel.rebuild(); }
     }
 
-    Rectangle {
-        anchors.fill: parent
-        color: "transparent"
-        border.width: 2
-        border.color: borderColor
-    }
+    // The body is the only thing that moves: the window keeps a fixed
+    // position, the body slides inside it (see AGENT.md, 'Анимация панелей').
+    Item {
+        id: body
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        height: panel.bodyHeight
+        transform: Translate { y: panel.slide }
 
-    Column {
-        id: content
-        anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
+        }
 
-        Row {
-            width: parent.width
-            height: 26
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.width: 2
+            border.color: borderColor
+        }
+
+        Column {
+            id: content
+            anchors.fill: parent
+            anchors.margins: 12
             spacing: 8
 
-            Text {
-                id: titleText
-                width: parent.width - 2 * parent.spacing - scanButton.width - powerButton.width
-                height: parent.height
-                text: "Bluetooth"
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 15
-                color: fgColor
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            Rectangle {
-                id: scanButton
-                width: 26
-                height: parent.height
-                color: "transparent"
-                border.width: 1
-                border.color: scanning ? accentColor : borderColor
-
-                property bool scanning: Bluetooth.defaultAdapter
-                    ? Bluetooth.defaultAdapter.discovering : false
+            Row {
+                width: parent.width
+                height: 26
+                spacing: 8
 
                 Text {
-                    anchors.centerIn: parent
-                    width: implicitWidth
-                    height: implicitHeight
-                    text: "\uf002"
+                    id: titleText
+                    width: parent.width - 2 * parent.spacing - scanButton.width - powerButton.width
+                    height: parent.height
+                    text: "Bluetooth"
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 14
-                    color: scanButton.scanning ? accentColor : fgColor
+                    font.pixelSize: 15
+                    color: fgColor
+                    verticalAlignment: Text.AlignVCenter
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (Bluetooth.defaultAdapter)
-                            Bluetooth.defaultAdapter.discovering =
-                                !Bluetooth.defaultAdapter.discovering;
+                Rectangle {
+                    id: scanButton
+                    width: 26
+                    height: parent.height
+                    color: "transparent"
+                    border.width: 1
+                    border.color: scanning ? accentColor : borderColor
+
+                    property bool scanning: Bluetooth.defaultAdapter
+                        ? Bluetooth.defaultAdapter.discovering : false
+
+                    Text {
+                        anchors.centerIn: parent
+                        width: implicitWidth
+                        height: implicitHeight
+                        text: "\uf002"
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 14
+                        color: scanButton.scanning ? accentColor : fgColor
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (Bluetooth.defaultAdapter)
+                                Bluetooth.defaultAdapter.discovering =
+                                    !Bluetooth.defaultAdapter.discovering;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: powerButton
+                    width: 26
+                    height: parent.height
+                    color: "transparent"
+                    border.width: 1
+                    border.color: adapterOn ? accentColor : borderColor
+
+                    Text {
+                        anchors.centerIn: parent
+                        width: implicitWidth
+                        height: implicitHeight
+                        text: "\u{f0425}"
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 14
+                        color: powerBusy ? borderColor
+                             : (adapterOn ? accentColor : fgColor)
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: setPower(!adapterOn)
                     }
                 }
             }
 
-            Rectangle {
-                id: powerButton
-                width: 26
-                height: parent.height
-                color: "transparent"
-                border.width: 1
-                border.color: adapterOn ? accentColor : borderColor
+            Rectangle { width: parent.width; height: 1; color: borderColor }
 
-                Text {
-                    anchors.centerIn: parent
-                    width: implicitWidth
-                    height: implicitHeight
-                    text: "\u{f0425}"
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 14
-                    color: powerBusy ? borderColor
-                         : (adapterOn ? accentColor : fgColor)
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: setPower(!adapterOn)
-                }
-            }
-        }
-
-        Rectangle { width: parent.width; height: 1; color: borderColor }
-
-        Flickable {
-            id: flick
-            width: parent.width
-            height: content.height - 26 - 1 - 2 * content.spacing
-            contentHeight: listColumn.height
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-
-            Column {
-                id: listColumn
+            Flickable {
+                id: flick
                 width: parent.width
-                spacing: 8
+                height: content.height - 26 - 1 - 2 * content.spacing
+                contentHeight: listColumn.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
 
-                BtSection {
+                Column {
+                    id: listColumn
                     width: parent.width
-                    heading: "Подключённые"
-                    devices: panel.connectedDevices
-                    emptyText: "Нет подключённых устройств"
-                    bgColor: panel.bgColor
-                    fgColor: panel.fgColor
-                    accentColor: panel.accentColor
-                    borderColor: panel.borderColor
-                    onDeviceSelected: panel.stopScan()
-                    onDeviceReleased: function (device) { panel.holdDevice(device.address); }
-                }
+                    spacing: 8
 
-                BtSection {
-                    width: parent.width
-                    heading: "Доступные"
-                    devices: panel.availableDevices
-                    emptyText: "Нет доступных устройств"
-                    bgColor: panel.bgColor
-                    fgColor: panel.fgColor
-                    accentColor: panel.accentColor
-                    borderColor: panel.borderColor
-                    onDeviceSelected: panel.stopScan()
-                    onDeviceReleased: function (device) { panel.holdDevice(device.address); }
+                    BtSection {
+                        width: parent.width
+                        heading: "Подключённые"
+                        devices: panel.connectedDevices
+                        emptyText: "Нет подключённых устройств"
+                        bgColor: panel.bgColor
+                        fgColor: panel.fgColor
+                        accentColor: panel.accentColor
+                        borderColor: panel.borderColor
+                        onDeviceSelected: panel.stopScan()
+                        onDeviceReleased: function (device) { panel.holdDevice(device.address); }
+                    }
+
+                    BtSection {
+                        width: parent.width
+                        heading: "Доступные"
+                        devices: panel.availableDevices
+                        emptyText: "Нет доступных устройств"
+                        bgColor: panel.bgColor
+                        fgColor: panel.fgColor
+                        accentColor: panel.accentColor
+                        borderColor: panel.borderColor
+                        onDeviceSelected: panel.stopScan()
+                        onDeviceReleased: function (device) { panel.holdDevice(device.address); }
+                    }
                 }
             }
         }

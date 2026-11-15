@@ -10,17 +10,25 @@ PanelWindow {
         left: true
     }
     margins {
-        top: panel.slide
+        // The window is taller than the panel and reaches above the screen top,
+        // so the body can slide in from the very top edge of the screen.
+        top: -panel.bodyHeight
         left: panel.widgetCenter - panel.implicitWidth / 2
     }
     implicitWidth: 422
-    implicitHeight: 152
-    color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
+    implicitHeight: panel.travel + panel.bodyHeight
+    color: "transparent"
+    surfaceFormat.opaque: false
 
     aboveWindows: true
     exclusionMode: ExclusionMode.Ignore
 
     property real topInset: 0
+
+    // Height of the visible panel body (without the sliding space above it).
+    property int bodyHeight: 152
+    // Distance the body travels: fully off-screen (above) -> resting position.
+    readonly property int travel: bodyHeight + 8 + topInset
     property real widgetCenter: 0
 
     property color bgColor: "#111318"
@@ -57,9 +65,10 @@ PanelWindow {
 
     property bool shown: false
     property bool slidingOut: false
-    readonly property real hiddenTop: -(implicitHeight + 8 + topInset)
-    readonly property real shownTop: 8 + topInset
-    property real slide: hiddenTop
+    // Offset of the body inside the window: -travel = hidden above the screen,
+    // 0 = resting position. The window itself never moves, only the body does,
+    // because layer-shell margins are only applied on surface commit.
+    property real slide: -travel
 
     visible: shown || slidingOut
 
@@ -85,11 +94,11 @@ PanelWindow {
         if (shown) {
             hideTimer.stop();
             slidingOut = false;
-            slide = hiddenTop;
-            slide = shownTop;
+            slide = -travel;
+            slide = 0;
         } else {
             slidingOut = true;
-            slide = hiddenTop;
+            slide = -travel;
             hideTimer.restart();
         }
     }
@@ -102,188 +111,206 @@ PanelWindow {
         function close(): void { panel.shown = false; }
     }
 
-    Rectangle {
-        anchors.fill: parent
-        color: "transparent"
-        border.width: 2
-        border.color: borderColor
-    }
+    // The body is the only thing that moves: the window keeps a fixed
+    // position, the body slides inside it (see AGENT.md, 'Анимация панелей').
+    Item {
+        id: body
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        height: panel.bodyHeight
+        transform: Translate { y: panel.slide }
 
-    Row {
-        id: content
-        anchors.fill: parent
-        anchors.margins: 12
-        spacing: 12
-
-        Item {
-            id: coverBox
-            width: 104
-            height: 104
-            anchors.verticalCenter: parent.verticalCenter
-
-            Rectangle {
-                anchors.fill: parent
-                color: Qt.rgba(fgColor.r, fgColor.g, fgColor.b, 0.08)
-                border.width: 1
-                border.color: borderColor
-            }
-
-            Image {
-                id: coverImage
-                anchors.fill: parent
-                source: panel.artUrl
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                cache: false
-                visible: status === Image.Ready
-            }
-
-            Text {
-                anchors.centerIn: parent
-                visible: !coverImage.visible
-                text: panel.albumGlyph
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 48
-                color: fgColor
-                opacity: 0.55
-            }
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
         }
 
-        Item {
-            id: info
-            width: parent.width - coverBox.width - parent.spacing
-            height: 104
-            anchors.verticalCenter: coverBox.verticalCenter
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.width: 2
+            border.color: borderColor
+        }
 
-            Column {
-                id: infoColumn
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    top: parent.top
+        Row {
+            id: content
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 12
+
+            Item {
+                id: coverBox
+                width: 104
+                height: 104
+                anchors.verticalCenter: parent.verticalCenter
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: Qt.rgba(fgColor.r, fgColor.g, fgColor.b, 0.08)
+                    border.width: 1
+                    border.color: borderColor
                 }
-                spacing: 6
+
+                Image {
+                    id: coverImage
+                    anchors.fill: parent
+                    source: panel.artUrl
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                    visible: status === Image.Ready
+                }
 
                 Text {
-                    id: titleText
-                    width: parent.width
-                    height: 20
-                    text: panel.hasTrack ? panel.trackTitle : "Нет воспроизведения"
+                    anchors.centerIn: parent
+                    visible: !coverImage.visible
+                    text: panel.albumGlyph
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 14
+                    font.pixelSize: 48
                     color: fgColor
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
+                    opacity: 0.55
                 }
+            }
 
-                Text {
-                    id: artistText
-                    width: parent.width
-                    height: 16
-                    text: panel.trackArtist
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 11
-                    color: subduedColor
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
-                }
+            Item {
+                id: info
+                width: parent.width - coverBox.width - parent.spacing
+                height: 104
+                anchors.verticalCenter: coverBox.verticalCenter
 
-                Row {
-                    id: progressRow
-                    width: parent.width
-                    height: 14
-                    spacing: 8
+                Column {
+                    id: infoColumn
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                    }
+                    spacing: 6
 
-                    Rectangle {
-                        id: progressTrack
-                        width: parent.width - timeText.width - parent.spacing
-                        height: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: Qt.rgba(fgColor.r, fgColor.g, fgColor.b, 0.18)
-                        border.width: 1
-                        border.color: borderColor
-
-                        Rectangle {
-                            width: progressTrack.width * panel.progress
-                            height: parent.height
-                            color: accentColor
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: panel.canSeek && panel.hasTrack
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: panel.seekRequested(mouseX / width)
-                        }
+                    Text {
+                        id: titleText
+                        width: parent.width
+                        height: 20
+                        text: panel.hasTrack ? panel.trackTitle : "Нет воспроизведения"
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 14
+                        color: fgColor
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Text {
-                        id: timeText
-                        width: 76
-                        height: parent.height
-                        text: panel.elapsedLabel + "/" + panel.totalLabel
+                        id: artistText
+                        width: parent.width
+                        height: 16
+                        text: panel.trackArtist
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 10
-                        color: fgColor
-                        opacity: 0.75
-                        horizontalAlignment: Text.AlignRight
+                        font.pixelSize: 11
+                        color: subduedColor
+                        elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
                     }
-                }
-            }
 
-            Row {
-                id: buttonsRow
-                anchors {
-                    horizontalCenter: parent.horizontalCenter
-                    bottom: parent.bottom
-                }
-                spacing: 8
-
-                Repeater {
-                    model: [
-                        { glyph: panel.previousGlyph, action: "prev", active: panel.canPrevious },
-                        { glyph: panel.playGlyph, action: "toggle", active: panel.canToggle },
-                        { glyph: panel.nextGlyph, action: "next", active: panel.canNext }
-                    ]
-
-                    delegate: Item {
-                        width: 28
-                        height: 28
-
-                        property string action: modelData.action
-                        property bool active: modelData.active
-                        property string glyph: action === "toggle"
-                            ? (panel.playing ? panel.pauseGlyph : panel.playGlyph)
-                            : modelData.glyph
+                    Row {
+                        id: progressRow
+                        width: parent.width
+                        height: 14
+                        spacing: 8
 
                         Rectangle {
-                            anchors.fill: parent
-                            color: "transparent"
+                            id: progressTrack
+                            width: parent.width - timeText.width - parent.spacing
+                            height: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Qt.rgba(fgColor.r, fgColor.g, fgColor.b, 0.18)
                             border.width: 1
                             border.color: borderColor
+
+                            Rectangle {
+                                width: progressTrack.width * panel.progress
+                                height: parent.height
+                                color: accentColor
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: panel.canSeek && panel.hasTrack
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: panel.seekRequested(mouseX / width)
+                            }
                         }
 
                         Text {
-                            anchors.centerIn: parent
-                            width: implicitWidth
-                            height: implicitHeight
-                            text: parent.glyph
+                            id: timeText
+                            width: 76
+                            height: parent.height
+                            text: panel.elapsedLabel + "/" + panel.totalLabel
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 14
-                            color: parent.action === "toggle" && panel.playing
-                                ? accentColor : fgColor
-                            opacity: parent.active ? 1 : 0.35
+                            font.pixelSize: 10
+                            color: fgColor
+                            opacity: 0.75
+                            horizontalAlignment: Text.AlignRight
+                            verticalAlignment: Text.AlignVCenter
                         }
+                    }
+                }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: parent.active
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                                if (parent.action === "prev") panel.previousRequested();
-                                else if (parent.action === "toggle") panel.toggleRequested();
-                                else panel.nextRequested();
+                Row {
+                    id: buttonsRow
+                    anchors {
+                        horizontalCenter: parent.horizontalCenter
+                        bottom: parent.bottom
+                    }
+                    spacing: 8
+
+                    Repeater {
+                        model: [
+                            { glyph: panel.previousGlyph, action: "prev", active: panel.canPrevious },
+                            { glyph: panel.playGlyph, action: "toggle", active: panel.canToggle },
+                            { glyph: panel.nextGlyph, action: "next", active: panel.canNext }
+                        ]
+
+                        delegate: Item {
+                            width: 28
+                            height: 28
+
+                            property string action: modelData.action
+                            property bool active: modelData.active
+                            property string glyph: action === "toggle"
+                                ? (panel.playing ? panel.pauseGlyph : panel.playGlyph)
+                                : modelData.glyph
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: "transparent"
+                                border.width: 1
+                                border.color: borderColor
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                width: implicitWidth
+                                height: implicitHeight
+                                text: parent.glyph
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 14
+                                color: parent.action === "toggle" && panel.playing
+                                    ? accentColor : fgColor
+                                opacity: parent.active ? 1 : 0.35
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: parent.active
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    if (parent.action === "prev") panel.previousRequested();
+                                    else if (parent.action === "toggle") panel.toggleRequested();
+                                    else panel.nextRequested();
+                                }
                             }
                         }
                     }

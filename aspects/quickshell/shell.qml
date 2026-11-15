@@ -506,6 +506,10 @@ ShellRoot {
         implicitWidth: 11
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
+        // The trigger must stay above the power panel: the panel's window is
+        // wider than the panel itself (the body slides in from the side), so
+        // in the Top layer it would cover this 11 px strip.
+        WlrLayershell.layer: WlrLayer.Overlay
 
         MouseArea {
             anchors.fill: parent
