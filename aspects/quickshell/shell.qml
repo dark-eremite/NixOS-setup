@@ -560,8 +560,8 @@ ShellRoot {
             if (root.micSource && root.micSource.audio)
                 root.micSource.audio.muted = !root.micSource.audio.muted;
         } else if (label === "music") {
-            if (root.musicPlayer && root.musicPlaying)
-                root.musicPlayer.pause();
+            if (root.musicPlayer && root.musicCanToggle)
+                root.musicPlayer.togglePlaying();
         }
     }
 
