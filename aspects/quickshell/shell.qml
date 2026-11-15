@@ -5,6 +5,7 @@ import Quickshell.Bluetooth
 import Quickshell.Networking
 import Quickshell.Services.Pipewire
 import Quickshell.Services.Mpris
+import Quickshell.Wayland
 import qs
 
 ShellRoot {
@@ -96,6 +97,19 @@ ShellRoot {
         return "" + m + ":" + (r < 10 ? "0" : "") + r;
     }
 
+    function mixColor(a, b, t): color {
+        return Qt.rgba(a.r + (b.r - a.r) * t,
+                       a.g + (b.g - a.g) * t,
+                       a.b + (b.b - a.b) * t, 1);
+    }
+
+    function escapeHtml(s): string {
+        return ("" + s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/'/g, "&#39;");
+    }
+
+    readonly property color musicSubduedColor: mixColor(fgColor, bgColor, 0.5)
+
     readonly property string musicTitle: musicPlayer ? musicPlayer.trackTitle : ""
     readonly property string musicArtist: musicPlayer ? musicPlayer.trackArtist : ""
     readonly property string musicArtUrl: musicPlayer ? musicPlayer.trackArtUrl : ""
@@ -106,7 +120,7 @@ ShellRoot {
     readonly property bool musicCanSeek: musicPlayer ? musicPlayer.canSeek : false
     readonly property bool musicHasTrack: musicTitle.length > 0
     readonly property string musicElapsedLabel: formatTime(musicPosition())
-    readonly property string musicRemainingLabel: formatTime(Math.max(0, musicLength() - musicPosition()))
+    readonly property string musicTotalLabel: formatTime(musicLength())
     readonly property real musicProgress: musicLength() > 0
         ? Math.max(0, Math.min(1, musicPosition() / musicLength())) : 0
 
@@ -449,6 +463,7 @@ ShellRoot {
     MusicPanel {
         id: musicPanel
         topInset: bar.margins.top + bar.implicitHeight
+        widgetCenter: bar.margins.left + musicWidget.x + musicWidget.width / 2
         bgColor: root.bgColor
         fgColor: root.fgColor
         accentColor: root.accentColor
@@ -458,8 +473,9 @@ ShellRoot {
         trackArtist: root.musicArtist
         artUrl: root.musicArtUrl
         elapsedLabel: root.musicElapsedLabel
-        remainingLabel: root.musicRemainingLabel
+        totalLabel: root.musicTotalLabel
         progress: root.musicProgress
+        subduedColor: root.musicSubduedColor
         playing: root.musicPlaying
         canPrevious: root.musicCanPrevious
         canNext: root.musicCanNext
@@ -475,6 +491,82 @@ ShellRoot {
                 root.musicPlayer.position = fraction * root.musicLength();
         }
     }
+
+    PanelWindow {
+        id: powerTrigger
+
+        anchors {
+            top: true
+            right: true
+            bottom: true
+        }
+        margins {
+            bottom: 8
+        }
+        implicitWidth: 11
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: powerPanel.toggle()
+        }
+    }
+
+    PowerPanel {
+        id: powerPanel
+        topInset: bar.margins.top + bar.implicitHeight
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+    }
+
+    function closePanelsExcept(keep: string): void {
+        if (keep !== "bluetooth") btPanel.shown = false;
+        if (keep !== "wifi") wifiPanel.shown = false;
+        if (keep !== "audio") audioPanel.shown = false;
+        if (keep !== "microphone") micPanel.shown = false;
+        if (keep !== "music") musicPanel.shown = false;
+        if (keep !== "power") powerPanel.shown = false;
+    }
+
+    function toggleTray(label: string): void {
+        if (label === "bluetooth") btPanel.shown = !btPanel.shown;
+        else if (label === "wifi") wifiPanel.shown = !wifiPanel.shown;
+        else if (label === "volume") audioPanel.shown = !audioPanel.shown;
+        else if (label === "microphone") micPanel.shown = !micPanel.shown;
+        else if (label === "music") musicPanel.shown = !musicPanel.shown;
+    }
+
+    function trayQuickAction(label: string): void {
+        if (label === "bluetooth") {
+            var adapter = Bluetooth.defaultAdapter;
+            if (adapter)
+                adapter.enabled = !adapter.enabled;
+            else
+                btPanel.setPower(!root.btEnabled);
+        } else if (label === "wifi") {
+            Networking.wifiEnabled = !Networking.wifiEnabled;
+        } else if (label === "volume") {
+            if (root.audioSink && root.audioSink.audio)
+                root.audioSink.audio.muted = !root.audioSink.audio.muted;
+        } else if (label === "microphone") {
+            if (root.micSource && root.micSource.audio)
+                root.micSource.audio.muted = !root.micSource.audio.muted;
+        } else if (label === "music") {
+            if (root.musicPlayer && root.musicPlaying)
+                root.musicPlayer.pause();
+        }
+    }
+
+    Connections { target: btPanel; function onShownChanged(): void { if (btPanel.shown) root.closePanelsExcept("bluetooth"); } }
+    Connections { target: wifiPanel; function onShownChanged(): void { if (wifiPanel.shown) root.closePanelsExcept("wifi"); } }
+    Connections { target: audioPanel; function onShownChanged(): void { if (audioPanel.shown) root.closePanelsExcept("audio"); } }
+    Connections { target: micPanel; function onShownChanged(): void { if (micPanel.shown) root.closePanelsExcept("microphone"); } }
+    Connections { target: musicPanel; function onShownChanged(): void { if (musicPanel.shown) root.closePanelsExcept("music"); } }
+    Connections { target: powerPanel; function onShownChanged(): void { if (powerPanel.shown) root.closePanelsExcept("power"); } }
 
     PanelWindow {
         id: bar
@@ -508,6 +600,7 @@ ShellRoot {
         }
         implicitHeight: 40
         color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.75)
+        WlrLayershell.layer: WlrLayer.Overlay
 
         Rectangle {
             anchors.fill: parent
@@ -541,16 +634,14 @@ ShellRoot {
 
         Rectangle {
             id: musicWidget
+            x: clockRect.x + clockRect.width
+                + (wsRow.x - clockRect.x - clockRect.width - width) / 2
             anchors {
-                left: clockRect.right
-                leftMargin: 10
                 verticalCenter: parent.verticalCenter
             }
-            width: 234
+            width: 351
             height: bar.height - 8
             color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
-            border.width: 1
-            border.color: borderColor
             z: bar.squareZ
 
             Row {
@@ -613,26 +704,39 @@ ShellRoot {
                 id: musicTitleText
                 anchors {
                     left: musicControls.right
-                    leftMargin: 6
                     right: parent.right
                     rightMargin: 6
                     verticalCenter: parent.verticalCenter
                 }
                 height: parent.height
-                text: root.musicHasTrack ? root.musicTitle : "Нет музыки"
+                text: root.musicHasTrack
+                    ? "<font color='" + fgColor.toString() + "'>"
+                        + root.escapeHtml(root.musicTitle) + "</font>"
+                        + "<font color='" + root.musicSubduedColor.toString() + "'>"
+                        + "  " + root.escapeHtml(root.musicArtist) + "</font>"
+                    : "<font color='" + root.musicSubduedColor.toString()
+                        + "'>Нет музыки</font>"
+                textFormat: Text.StyledText
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 11
-                color: fgColor
                 elide: Text.ElideRight
-                horizontalAlignment: Text.AlignRight
+                horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignVCenter
             }
 
             MouseArea {
                 anchors.fill: parent
                 z: -1
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
-                onClicked: musicPanel.shown = !musicPanel.shown
+                onPressed: function (mouse) {
+                    if (mouse.button === Qt.RightButton)
+                        root.toggleTray("music");
+                    else {
+                        root.closePanelsExcept("");
+                        root.trayQuickAction("music");
+                    }
+                }
             }
         }
 
@@ -713,12 +817,11 @@ ShellRoot {
                 right: parent.right
                 verticalCenter: parent.verticalCenter
             }
-            spacing: bar.gap
+            spacing: 0
             z: bar.squareZ
 
             Repeater {
                 model: [
-                    { glyph: "\uf185", label: "brightness" },
                     { glyph: root.micGlyph, label: "microphone", dynamic: true },
                     { glyph: root.audioGlyph, label: "volume", dynamic: true },
                     { glyph: root.btGlyph, label: "bluetooth", dynamic: true },
@@ -727,7 +830,7 @@ ShellRoot {
                 ]
 
                 delegate: Item {
-                    width: isNixos ? bar.height : 24
+                    width: bar.height
                     height: bar.height
 
                     property bool isBt: modelData.label === "bluetooth"
@@ -749,30 +852,30 @@ ShellRoot {
                         anchors.centerIn: parent
                         width: bar.height
                         height: bar.height
-                        visible: parent.isNixos
-                        color: accentColor
+                        color: parent.isNixos ? accentColor : "transparent"
                     }
 
                     Text {
                         anchors.centerIn: parent
                         text: parent.icon
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 16
+                        font.pixelSize: parent.isNixos ? 19 : 16
                         color: parent.tint
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
                     }
 
                     MouseArea {
                         anchors.fill: parent
-                        enabled: parent.isBt || parent.isWifi
-                            || parent.isVolume || parent.isMic
+                        enabled: !parent.isNixos
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: {
-                            if (parent.isBt) btPanel.shown = !btPanel.shown;
-                            else if (parent.isWifi) wifiPanel.shown = !wifiPanel.shown;
-                            else if (parent.isVolume) audioPanel.shown = !audioPanel.shown;
-                            else micPanel.shown = !micPanel.shown;
+                        onPressed: function (mouse) {
+                            var label = modelData.label;
+                            if (mouse.button === Qt.RightButton) {
+                                root.toggleTray(label);
+                            } else {
+                                root.closePanelsExcept("");
+                                root.trayQuickAction(label);
+                            }
                         }
                     }
                 }

@@ -16,6 +16,7 @@ let
     cp ${./StreamSection.qml} $out/StreamSection.qml
     cp ${./MicrophonePanel.qml} $out/MicrophonePanel.qml
     cp ${./MusicPanel.qml} $out/MusicPanel.qml
+    cp ${./PowerPanel.qml} $out/PowerPanel.qml
   '';
 
   wm = inputs.wrapper-manager.lib {

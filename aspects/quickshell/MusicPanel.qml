@@ -11,28 +11,29 @@ PanelWindow {
     }
     margins {
         top: panel.slide
-        left: 12
+        left: panel.widgetCenter - panel.implicitWidth / 2
     }
-    implicitWidth: 360
+    implicitWidth: 422
     implicitHeight: 152
     color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
 
     aboveWindows: true
-    focusable: true
     exclusionMode: ExclusionMode.Ignore
 
     property real topInset: 0
+    property real widgetCenter: 0
 
     property color bgColor: "#111318"
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
+    property color subduedColor: "#808080"
 
     property string trackTitle: ""
     property string trackArtist: ""
     property string artUrl: ""
     property string elapsedLabel: "0:00"
-    property string remainingLabel: "0:00"
+    property string totalLabel: "0:00"
     property real progress: 0
     property bool playing: false
     property bool canPrevious: false
@@ -151,94 +152,91 @@ PanelWindow {
         Item {
             id: info
             width: parent.width - coverBox.width - parent.spacing
-            height: parent.height
+            height: 104
+            anchors.verticalCenter: coverBox.verticalCenter
 
-            Text {
-                id: titleText
+            Column {
+                id: infoColumn
                 anchors {
+                    left: parent.left
+                    right: parent.right
                     top: parent.top
-                    left: parent.left
-                    right: parent.right
                 }
-                height: 20
-                text: panel.hasTrack ? panel.trackTitle : "Нет воспроизведения"
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 14
-                color: fgColor
-                elide: Text.ElideRight
-                verticalAlignment: Text.AlignVCenter
-            }
+                spacing: 6
 
-            Text {
-                id: artistText
-                anchors {
-                    top: titleText.bottom
-                    left: parent.left
-                    right: parent.right
-                }
-                height: 16
-                text: panel.trackArtist
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 11
-                color: fgColor
-                opacity: 0.65
-                elide: Text.ElideRight
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            Row {
-                id: progressRow
-                anchors {
-                    top: artistText.bottom
-                    topMargin: 8
-                    left: parent.left
-                    right: parent.right
-                }
-                height: 14
-                spacing: 8
-
-                Rectangle {
-                    id: progressTrack
-                    width: parent.width - timeText.width - parent.spacing
-                    height: 4
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: Qt.rgba(fgColor.r, fgColor.g, fgColor.b, 0.18)
-                    border.width: 1
-                    border.color: borderColor
-
-                    Rectangle {
-                        width: progressTrack.width * panel.progress
-                        height: parent.height
-                        color: accentColor
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        enabled: panel.canSeek && panel.hasTrack
-                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: panel.seekRequested(mouseX / width)
-                    }
+                Text {
+                    id: titleText
+                    width: parent.width
+                    height: 20
+                    text: panel.hasTrack ? panel.trackTitle : "Нет воспроизведения"
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 14
+                    color: fgColor
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
                 }
 
                 Text {
-                    id: timeText
-                    width: 76
-                    height: parent.height
-                    text: panel.elapsedLabel + "/" + panel.remainingLabel
+                    id: artistText
+                    width: parent.width
+                    height: 16
+                    text: panel.trackArtist
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 10
-                    color: fgColor
-                    opacity: 0.75
-                    horizontalAlignment: Text.AlignRight
+                    font.pixelSize: 11
+                    color: subduedColor
+                    elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
+                }
+
+                Row {
+                    id: progressRow
+                    width: parent.width
+                    height: 14
+                    spacing: 8
+
+                    Rectangle {
+                        id: progressTrack
+                        width: parent.width - timeText.width - parent.spacing
+                        height: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Qt.rgba(fgColor.r, fgColor.g, fgColor.b, 0.18)
+                        border.width: 1
+                        border.color: borderColor
+
+                        Rectangle {
+                            width: progressTrack.width * panel.progress
+                            height: parent.height
+                            color: accentColor
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: panel.canSeek && panel.hasTrack
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: panel.seekRequested(mouseX / width)
+                        }
+                    }
+
+                    Text {
+                        id: timeText
+                        width: 76
+                        height: parent.height
+                        text: panel.elapsedLabel + "/" + panel.totalLabel
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 10
+                        color: fgColor
+                        opacity: 0.75
+                        horizontalAlignment: Text.AlignRight
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
 
             Row {
                 id: buttonsRow
                 anchors {
+                    horizontalCenter: parent.horizontalCenter
                     bottom: parent.bottom
-                    left: parent.left
                 }
                 spacing: 8
 

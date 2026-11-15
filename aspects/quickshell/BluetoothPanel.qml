@@ -86,9 +86,16 @@ PanelWindow {
 
     property var connectedDevices: []
     property var availableDevices: []
+    property var lastConnectAttempt: ({})
+    property var heldDevices: ({})
+
+    readonly property int pollIntervalMs: 5000
+    readonly property int retryIntervalMs: 10000
+    readonly property int manualHoldMs: 30000
 
     function rebuild(): void {
         var connected = [];
+        var paired = [];
         var available = [];
         var vals = Bluetooth.devices ? Bluetooth.devices.values : [];
         for (var i = 0; i < vals.length; i++) {
@@ -96,18 +103,54 @@ PanelWindow {
             if (!d) continue;
             if (d.connected)
                 connected.push(d);
+            else if (d.paired || d.bonded)
+                paired.push(d);
             else
                 available.push(d);
         }
-        panel.connectedDevices = connected;
+        panel.connectedDevices = connected.concat(paired);
         panel.availableDevices = available;
+    }
+
+    function holdDevice(address: string): void {
+        if (address)
+            panel.heldDevices[address] = Date.now();
+    }
+
+    function pollPairedDevices(): void {
+        var adapter = Bluetooth.defaultAdapter;
+        if (!adapter || !adapter.enabled) return;
+        var now = Date.now();
+        var vals = Bluetooth.devices ? Bluetooth.devices.values : [];
+        for (var i = 0; i < vals.length; i++) {
+            var d = vals[i];
+            if (!d || d.connected || !(d.paired || d.bonded)) continue;
+            if (d.state !== BluetoothDeviceState.Disconnected) continue;
+            var key = d.address;
+            if (!key) continue;
+            if (now - (panel.heldDevices[key] || 0) < panel.manualHoldMs) continue;
+            if (now - (panel.lastConnectAttempt[key] || 0) < panel.retryIntervalMs) continue;
+            panel.lastConnectAttempt[key] = now;
+            d.connect();
+        }
     }
 
     Component.onCompleted: rebuild()
 
+    Timer {
+        interval: panel.pollIntervalMs
+        running: panel.adapterOn
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: panel.pollPairedDevices()
+    }
+
     Connections {
         target: Bluetooth.devices
-        function onValuesChanged(): void { panel.rebuild(); }
+        function onValuesChanged(): void {
+            panel.rebuild();
+            panel.pollPairedDevices();
+        }
     }
 
     Instantiator {
@@ -115,9 +158,14 @@ PanelWindow {
         delegate: Connections {
             required property var modelData
             target: modelData
-            function onConnectedChanged(): void { panel.rebuild(); }
+            function onConnectedChanged(): void {
+                if (modelData.connected)
+                    delete panel.heldDevices[modelData.address];
+                panel.rebuild();
+            }
             function onStateChanged(): void { panel.rebuild(); }
             function onPairedChanged(): void { panel.rebuild(); }
+            function onBondedChanged(): void { panel.rebuild(); }
             function onBatteryChanged(): void { panel.rebuild(); }
             function onNameChanged(): void { panel.rebuild(); }
         }
@@ -264,6 +312,7 @@ PanelWindow {
                     accentColor: panel.accentColor
                     borderColor: panel.borderColor
                     onDeviceSelected: panel.stopScan()
+                    onDeviceReleased: function (device) { panel.holdDevice(device.address); }
                 }
 
                 BtSection {
@@ -276,6 +325,7 @@ PanelWindow {
                     accentColor: panel.accentColor
                     borderColor: panel.borderColor
                     onDeviceSelected: panel.stopScan()
+                    onDeviceReleased: function (device) { panel.holdDevice(device.address); }
                 }
             }
         }

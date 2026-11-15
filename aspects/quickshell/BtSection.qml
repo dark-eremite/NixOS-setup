@@ -13,6 +13,7 @@ Column {
     property color borderColor: "#59FFFFFF"
 
     signal deviceSelected()
+    signal deviceReleased(var device)
 
     width: 300
     spacing: 4
@@ -120,10 +121,12 @@ Column {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     section.deviceSelected();
-                    if (modelData.connected)
+                    if (modelData.connected) {
+                        section.deviceReleased(modelData);
                         modelData.disconnect();
-                    else
+                    } else {
                         modelData.connect();
+                    }
                 }
             }
         }

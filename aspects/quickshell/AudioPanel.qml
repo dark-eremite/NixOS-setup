@@ -19,7 +19,6 @@ PanelWindow {
     color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
 
     aboveWindows: true
-    focusable: true
     exclusionMode: ExclusionMode.Ignore
 
     property real topInset: 0
