@@ -1,0 +1,161 @@
+diff --git a/niri-config/src/binds.rs b/niri-config/src/binds.rs
+index 0be7596..f7047df 100644
+--- a/niri-config/src/binds.rs
++++ b/niri-config/src/binds.rs
+@@ -162,6 +162,7 @@ pub enum Action {
+     #[knuffel(skip)]
+     FocusColumnLeftUnderMouse,
+     FocusColumnRight,
++    FocusColumnAfterVisible,
+     #[knuffel(skip)]
+     FocusColumnRightUnderMouse,
+     FocusColumnFirst,
+@@ -444,6 +445,7 @@ impl From<niri_ipc::Action> for Action {
+             niri_ipc::Action::FocusWindowPrevious {} => Self::FocusWindowPrevious,
+             niri_ipc::Action::FocusColumnLeft {} => Self::FocusColumnLeft,
+             niri_ipc::Action::FocusColumnRight {} => Self::FocusColumnRight,
++            niri_ipc::Action::FocusColumnAfterVisible {} => Self::FocusColumnAfterVisible,
+             niri_ipc::Action::FocusColumnFirst {} => Self::FocusColumnFirst,
+             niri_ipc::Action::FocusColumnLast {} => Self::FocusColumnLast,
+             niri_ipc::Action::FocusColumnRightOrFirst {} => Self::FocusColumnRightOrFirst,
+diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
+index 0aa3cb4..a8383bc 100644
+--- a/niri-ipc/src/lib.rs
++++ b/niri-ipc/src/lib.rs
+@@ -338,6 +338,8 @@ pub enum Action {
+     FocusColumnLeft {},
+     /// Focus the column to the right.
+     FocusColumnRight {},
++    /// Focus the first column to the right of the visible area, scrolling it into view.
++    FocusColumnAfterVisible {},
+     /// Focus the first column.
+     FocusColumnFirst {},
+     /// Focus the last column.
+diff --git a/src/input/mod.rs b/src/input/mod.rs
+index f1ad493..324532b 100644
+--- a/src/input/mod.rs
++++ b/src/input/mod.rs
+@@ -1064,6 +1064,13 @@ impl State {
+                 // FIXME: granular
+                 self.niri.queue_redraw_all();
+             }
++            Action::FocusColumnAfterVisible => {
++                self.niri.layout.focus_column_after_visible();
++                self.maybe_warp_cursor_to_focus();
++                self.niri.layer_shell_on_demand_focus = None;
++                // FIXME: granular
++                self.niri.queue_redraw_all();
++            }
+             Action::FocusColumnRightUnderMouse => {
+                 if let Some((output, ws)) = self.niri.workspace_under_cursor(true) {
+                     let ws_id = ws.id();
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+index 5c4dd63..2b03154 100644
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -1947,6 +1947,13 @@ impl<W: LayoutElement> Layout<W> {
+         workspace.focus_column_last();
+     }
+ 
++    pub fn focus_column_after_visible(&mut self) {
++        let Some(workspace) = self.active_workspace_mut() else {
++            return;
++        };
++        workspace.focus_column_after_visible();
++    }
++
+     pub fn focus_column_right_or_first(&mut self) {
+         let Some(workspace) = self.active_workspace_mut() else {
+             return;
+diff --git a/src/layout/scrolling.rs b/src/layout/scrolling.rs
+index 007bcaf..2c74f03 100644
+--- a/src/layout/scrolling.rs
++++ b/src/layout/scrolling.rs
+@@ -2291,6 +2291,69 @@ impl<W: LayoutElement> ScrollingSpace<W> {
+         self.animate_view_offset_to_column(None, self.active_column_idx, None);
+     }
+ 
++    /// Focus the first column to the right of the visible area.
++    ///
++    /// Unlike focus_right(), this skips the columns that are already fully
++    /// visible, so that the view scrolls to the next column instead of just
++    /// switching to a window that is already on screen.
++    pub fn focus_column_after_visible(&mut self) {
++        if self.columns.is_empty() {
++            return;
++        }
++
++        // Consider the end of an ongoing animation because that's what compute to fit does too.
++        let view_x = self.target_view_pos();
++        let view_right = view_x + self.working_area.size.w;
++
++        // Find the first column that isn't fully visible yet: either it peeks in
++        // from the right, or it's entirely to the right of the view.
++        let mut last_visible = None;
++        let mut target = None;
++        for (idx, col_x) in self
++            .column_xs(self.data.iter().copied())
++            .take(self.columns.len())
++            .enumerate()
++        {
++            let width = self.data[idx].width;
++
++            if col_x + width <= view_x {
++                // Column is entirely to the left of the view.
++                continue;
++            }
++
++            if col_x <= view_x && col_x + width >= view_right {
++                // Column is wider than the view, so it covers all of it.
++                last_visible = Some(idx);
++                continue;
++            }
++
++            if col_x < view_x {
++                // Column is cut off at the left edge of the view.
++                continue;
++            }
++
++            if col_x >= view_right || col_x + width > view_right {
++                // Column is not fully visible: this is the one to bring in.
++                target = Some(idx);
++                break;
++            }
++
++            // Column is fully visible.
++            last_visible = Some(idx);
++        }
++
++        let Some(target) = target.or_else(|| last_visible.map(|idx| idx + 1)) else {
++            return;
++        };
++
++        if target >= self.columns.len() {
++            // Nothing to the right of the visible area.
++            return;
++        }
++
++        self.activate_column(target);
++    }
++
+     pub fn view_pos(&self) -> f64 {
+         self.column_x(self.active_column_idx) + self.view_offset.current()
+     }
+diff --git a/src/layout/workspace.rs b/src/layout/workspace.rs
+index 49548a8..3598de5 100644
+--- a/src/layout/workspace.rs
++++ b/src/layout/workspace.rs
+@@ -937,6 +937,13 @@ impl<W: LayoutElement> Workspace<W> {
+         }
+     }
+ 
++    pub fn focus_column_after_visible(&mut self) {
++        if self.floating_is_active.get() {
++            return;
++        }
++        self.scrolling.focus_column_after_visible();
++    }
++
+     pub fn focus_column_right_or_first(&mut self) {
+         if !self.focus_right() {
+             self.focus_column_first();
