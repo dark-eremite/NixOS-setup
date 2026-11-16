@@ -15,11 +15,17 @@
       # workspace instead. An overlay keeps every pkgs.niri consumer (the
       # wrapped compositor, the systemd unit and the `niri msg` CLI in the
       # theme scripts) on the same binary.
+      #
+      # focus-column-after-visible.patch adds a new action that focuses the
+      # first column to the right of the visible area, so that clicking the
+      # right screen edge scrolls the next window in instead of just switching
+      # to a window that is already fully visible.
       nixpkgs.overlays = [
         (final: prev: {
           niri = prev.niri.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [
               ./patches/no-new-workspaces.patch
+              ./patches/focus-column-after-visible.patch
             ];
           });
         })

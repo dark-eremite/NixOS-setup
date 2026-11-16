@@ -513,8 +513,13 @@ ShellRoot {
 
         MouseArea {
             anchors.fill: parent
-            acceptedButtons: Qt.RightButton
-            onClicked: powerPanel.toggle()
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: mouse => {
+                if (mouse.button === Qt.RightButton)
+                    powerPanel.toggle();
+                else
+                    Quickshell.execDetached([ "niri", "msg", "action", "focus-column-after-visible" ]);
+            }
         }
     }
 
