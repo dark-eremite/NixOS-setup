@@ -64,6 +64,8 @@ PanelWindow {
 
     function toggle(): void { shown = !shown; }
 
+    signal notificationsRequested()
+
     IpcHandler {
         target: "power"
 
@@ -288,10 +290,10 @@ PanelWindow {
 
                 Repeater {
                     model: [
-                        "\u{f09e7}",
-                        "\uf0c5",
-                        "\uf1fb",
-                        "\uf233"
+                        { glyph: "\u{f009e}", action: "notifications" },
+                        { glyph: "\uf0c5", action: "" },
+                        { glyph: "\uf1fb", action: "" },
+                        { glyph: "\uf233", action: "" }
                     ]
 
                     delegate: Item {
@@ -310,7 +312,7 @@ PanelWindow {
 
                         Text {
                             anchors.centerIn: parent
-                            text: modelData
+                            text: modelData.glyph
                             font.family: "JetBrainsMono Nerd Font"
                             font.pixelSize: 20
                             color: parent.hovered ? panel.accentColor : panel.fgColor
@@ -322,6 +324,10 @@ PanelWindow {
                             cursorShape: Qt.PointingHandCursor
                             onEntered: parent.hovered = true
                             onExited: parent.hovered = false
+                            onClicked: {
+                                if (modelData.action === "notifications")
+                                    panel.notificationsRequested();
+                            }
                         }
                     }
                 }

@@ -534,12 +534,22 @@ ShellRoot {
         borderColor: root.borderColor
     }
 
+    NotificationHistoryPanel {
+        id: notificationHistory
+        topInset: bar.margins.top + bar.implicitHeight
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+    }
+
     NotificationPopup {
         id: notificationPopup
         bgColor: root.bgColor
         fgColor: root.fgColor
         accentColor: root.accentColor
         borderColor: root.borderColor
+        notificationsEnabled: notificationHistory.notificationsEnabled
     }
 
     function closePanelsExcept(keep: string): void {
@@ -549,6 +559,7 @@ ShellRoot {
         if (keep !== "microphone") micPanel.shown = false;
         if (keep !== "music") musicPanel.shown = false;
         if (keep !== "power") powerPanel.shown = false;
+        if (keep !== "notifications") notificationHistory.shown = false;
     }
 
     function toggleTray(label: string): void {
@@ -586,6 +597,8 @@ ShellRoot {
     Connections { target: micPanel; function onShownChanged(): void { if (micPanel.shown) root.closePanelsExcept("microphone"); } }
     Connections { target: musicPanel; function onShownChanged(): void { if (musicPanel.shown) root.closePanelsExcept("music"); } }
     Connections { target: powerPanel; function onShownChanged(): void { if (powerPanel.shown) root.closePanelsExcept("power"); } }
+    Connections { target: notificationHistory; function onShownChanged(): void { if (notificationHistory.shown) root.closePanelsExcept("notifications"); } }
+    Connections { target: powerPanel; function onNotificationsRequested(): void { notificationHistory.shown = true; } }
 
     PanelWindow {
         id: bar

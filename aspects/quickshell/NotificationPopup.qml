@@ -39,6 +39,8 @@ PanelWindow {
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
+    // Controlled by the notification-history panel's bell button.
+    property bool notificationsEnabled: true
 
     readonly property string bellGlyph: "\u{f0178}"
 
@@ -49,6 +51,11 @@ PanelWindow {
     }
 
     visible: notifications.count > 0
+
+    onNotificationsEnabledChanged: {
+        if (!notificationsEnabled)
+            notifications.clear();
+    }
 
     function iconSource(icon: string): string {
         if (!icon || icon.length === 0)
@@ -149,7 +156,8 @@ PanelWindow {
 
         onNotification: function (notification) {
             notification.tracked = true;
-            popup.pushNotification(notification);
+            if (popup.notificationsEnabled)
+                popup.pushNotification(notification);
         }
     }
 

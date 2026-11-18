@@ -10,6 +10,5 @@ with pkgs; [
   yandex-music
   ayugram-desktop
   devenv
-  mako
   libnotify
 ]
