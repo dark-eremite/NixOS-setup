@@ -37,6 +37,10 @@
 
   programs.firefox.enable = true;
   programs.direnv.enable = true;
+  programs.throne = {
+    enable = true;
+    tunMode.enable = true;
+  };
 
   environment.systemPackages = import ../../packages.nix { inherit pkgs; };
 

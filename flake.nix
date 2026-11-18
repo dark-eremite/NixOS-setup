@@ -40,6 +40,7 @@
             den.aspects.niri
             den.aspects.theme
             den.aspects.lockscreen
+#            den.aspects.discord
           ];
 
           nixos = {
@@ -55,6 +56,7 @@
         den.aspects.niri = import ./aspects/niri/nixos.nix;
         den.aspects.theme = import ./aspects/theme/nixos.nix;
         den.aspects.lockscreen = import ./aspects/lockscreen/nixos.nix;
+#        den.aspects.discord = import ./aspects/discord/nixos.nix;
       }
     );
 }

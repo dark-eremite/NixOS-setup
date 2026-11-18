@@ -11,11 +11,11 @@ PanelWindow {
         right: true
     }
     margins {
-        bottom: 12
-        right: 12 - popup.travel
+        bottom: -popup.travel
+        right: 12
     }
-    implicitWidth: popup.bodyWidth + popup.travel
-    implicitHeight: popup.bodyHeight
+    implicitWidth: popup.bodyWidth
+    implicitHeight: popup.stackHeight + popup.travel
     color: "transparent"
     surfaceFormat.opaque: false
 
@@ -24,145 +24,323 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
 
     property int bodyWidth: 422
-    property int bodyHeight: 152
-    readonly property int travel: bodyWidth + 12
+    property int bodyHeight: 160
+    property int bodyGap: 12
+    // Единственное место, где задаётся число одновременно видимых уведомлений.
+    property int maxNotifications: 2
+
+    readonly property int step: bodyHeight + bodyGap
+    readonly property int travel: step
+    readonly property int stackHeight: maxNotifications * bodyHeight + (maxNotifications - 1) * bodyGap
+    // Позиция самого нижнего слота: его низ совпадает с нижним краем экрана.
+    readonly property int bottomSlotY: stackHeight - bodyHeight
 
     property color bgColor: "#111318"
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
     property color borderColor: "#59FFFFFF"
 
-    property bool shown: false
-    property bool slidingOut: false
-    property real slide: travel
+    readonly property string bellGlyph: "\u{f0178}"
 
-    property string summary: ""
-    property string body: ""
-    property string appName: ""
+    property int sequence: 0
 
-    visible: shown || slidingOut
+    ListModel {
+        id: notifications
+    }
 
-    onShownChanged: {
-        if (shown) {
-            outTimer.stop();
-            slidingOut = false;
-            slide = travel;
-            slide = 0;
-            dismissTimer.restart();
-        } else {
-            slidingOut = true;
-            slide = travel;
-            outTimer.restart();
+    visible: notifications.count > 0
+
+    function iconSource(icon: string): string {
+        if (!icon || icon.length === 0)
+            return "";
+        if (icon.indexOf("/") === 0)
+            return "file://" + icon;
+        if (icon.indexOf("file:") === 0 || icon.indexOf("http:") === 0 || icon.indexOf("https:") === 0 || icon.indexOf("image://") === 0 || icon.indexOf("qrc:") === 0)
+            return icon;
+        if (typeof Quickshell.iconPath === "function") {
+            var p = Quickshell.iconPath(icon, true);
+            if (p && p.length > 0)
+                return p;
+        }
+        return "";
+    }
+
+    function activeCount(): int {
+        var n = 0;
+        for (var i = 0; i < notifications.count; i++) {
+            if (!notifications.get(i).exiting)
+                n++;
+        }
+        return n;
+    }
+
+    function oldestActiveId(): int {
+        for (var i = 0; i < notifications.count; i++) {
+            if (!notifications.get(i).exiting)
+                return notifications.get(i).notifId;
+        }
+        return -1;
+    }
+
+    // Пересчитывает слоты снизу вверх: 0 — самый нижний (самый свежий).
+    function relayout(): void {
+        var slot = 0;
+        for (var i = notifications.count - 1; i >= 0; i--) {
+            if (notifications.get(i).exiting)
+                continue;
+            notifications.setProperty(i, "slot", slot++);
         }
     }
 
-    Behavior on slide {
-        NumberAnimation {
-            duration: 260
-            easing.type: Easing.OutCubic
-        }
-    }
-
-    Timer {
-        id: outTimer
-        interval: 270
-        running: false
-        repeat: false
-        onTriggered: {
-            if (!popup.shown)
-                popup.slidingOut = false;
-        }
-    }
-
-    Timer {
-        id: dismissTimer
-        interval: 5000
-        running: false
-        repeat: false
-        onTriggered: popup.shown = false
-    }
-
-    function showNotification(n): void {
-        summary = n.summary || "";
-        body = n.body || "";
-        appName = n.appName || "";
-        if (shown) {
-            dismissTimer.restart();
+    // Начинает уход вправо, не дожидаясь таймера.
+    function removeById(id: int): void {
+        for (var i = 0; i < notifications.count; i++) {
+            if (notifications.get(i).notifId !== id)
+                continue;
+            if (notifications.get(i).exiting)
+                return;
+            notifications.setProperty(i, "exiting", true);
+            var item = cards.itemAt(i);
+            if (item)
+                item.exit();
+            else
+                popup.finalizeRemoval(id);
             return;
         }
-        shown = true;
+    }
+
+    function finalizeRemoval(id: int): void {
+        for (var i = 0; i < notifications.count; i++) {
+            if (notifications.get(i).notifId === id) {
+                notifications.remove(i);
+                relayout();
+                return;
+            }
+        }
+    }
+
+    function pushNotification(n): void {
+        var id = ++sequence;
+        notifications.append({
+            notifId: id,
+            slot: 0,
+            exiting: false,
+            summary: n.summary || "",
+            body: n.body || "",
+            appName: n.appName || "",
+            appIcon: n.appIcon || "",
+            image: n.image || ""
+        });
+        if (activeCount() > maxNotifications) {
+            var old = oldestActiveId();
+            if (old > 0)
+                removeById(old);
+        }
+        relayout();
     }
 
     NotificationServer {
         id: server
+        bodySupported: true
+        bodyMarkupSupported: true
+        actionsSupported: true
+        persistenceSupported: true
+        keepOnReload: false
 
         onNotification: function (notification) {
             notification.tracked = true;
-            popup.showNotification(notification);
+            popup.pushNotification(notification);
         }
     }
 
     Item {
-        id: content
-        anchors {
-            top: parent.top
-            left: parent.left
-            bottom: parent.bottom
-        }
-        width: popup.bodyWidth
-        transform: Translate { x: popup.slide }
+        anchors.fill: parent
 
-        Rectangle {
-            anchors.fill: parent
-            color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
-        }
+        Repeater {
+            id: cards
+            model: notifications
 
-        Rectangle {
-            anchors.fill: parent
-            color: "transparent"
-            border.width: 2
-            border.color: popup.borderColor
-        }
+            delegate: Item {
+                id: card
+                width: popup.bodyWidth
+                height: popup.bodyHeight
+                y: popup.bottomSlotY - model.slot * popup.step
+                opacity: 1
 
-        Column {
-            anchors {
-                fill: parent
-                margins: 12
-            }
-            spacing: 6
+                readonly property int notifId: model.notifId
+                readonly property string imageSource: model.image.length > 0 ? popup.iconSource(model.image) : ""
+                readonly property string iconSourceValue: imageSource.length > 0 ? imageSource : popup.iconSource(model.appIcon)
 
-            Text {
-                width: parent.width
-                visible: popup.appName.length > 0
-                text: popup.appName
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 10
-                color: popup.accentColor
-                elide: Text.ElideRight
-            }
+                Behavior on y {
+                    NumberAnimation {
+                        duration: 260
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 260
+                        easing.type: Easing.InCubic
+                    }
+                }
 
-            Text {
-                width: parent.width
-                text: popup.summary.length > 0 ? popup.summary : "Новое уведомление"
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 14
-                font.bold: true
-                color: popup.fgColor
-                elide: Text.ElideRight
-                wrapMode: Text.NoWrap
-            }
+                transform: Translate {
+                    id: shift
+                    x: 0
+                    y: popup.travel
 
-            Text {
-                width: parent.width
-                height: parent.height - y
-                text: popup.body
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 11
-                color: popup.fgColor
-                opacity: 0.85
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
-                maximumLineCount: 4
+                    Behavior on x {
+                        NumberAnimation {
+                            duration: 260
+                            easing.type: Easing.InCubic
+                        }
+                    }
+                    Behavior on y {
+                        NumberAnimation {
+                            duration: 260
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
+
+                function exit(): void {
+                    shift.x = popup.bodyWidth + 40;
+                    opacity = 0;
+                    exitTimer.restart();
+                }
+
+                Component.onCompleted: {
+                    shift.y = 0;
+                    dismissTimer.restart();
+                }
+
+                Timer {
+                    id: dismissTimer
+                    interval: 5000
+                    running: false
+                    repeat: false
+                    onTriggered: popup.removeById(notifId)
+                }
+
+                Timer {
+                    id: exitTimer
+                    interval: 280
+                    running: false
+                    repeat: false
+                    onTriggered: popup.finalizeRemoval(notifId)
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: Qt.rgba(popup.bgColor.r, popup.bgColor.g, popup.bgColor.b, 0.92)
+                    border.width: 2
+                    border.color: popup.borderColor
+                }
+
+                Row {
+                    anchors {
+                        fill: parent
+                        leftMargin: 24
+                        rightMargin: 12
+                        topMargin: 12
+                        bottomMargin: 12
+                    }
+                    spacing: 24
+
+                    Item {
+                        id: leftColumn
+                        width: 64
+                        height: parent.height
+
+                        Item {
+                            id: iconBox
+                            width: 64
+                            height: 64
+                            anchors {
+                                top: parent.top
+                                horizontalCenter: parent.horizontalCenter
+                            }
+
+                            Image {
+                                id: iconImage
+                                anchors.fill: parent
+                                source: iconSourceValue
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                cache: false
+                                smooth: true
+                                visible: status === Image.Ready
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                visible: !iconImage.visible
+                                text: popup.bellGlyph
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 34
+                                color: popup.fgColor
+                                opacity: 0.7
+                            }
+                        }
+
+                        Text {
+                            id: appNameText
+                            anchors {
+                                top: iconBox.bottom
+                                topMargin: 12
+                                left: parent.left
+                                right: parent.right
+                            }
+                            text: model.appName
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 12
+                            color: popup.accentColor
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.NoWrap
+                        }
+                    }
+
+                    Item {
+                        id: rightColumn
+                        width: parent.width - leftColumn.width - parent.spacing
+                        height: parent.height
+
+                        Text {
+                            id: titleText
+                            anchors {
+                                top: parent.top
+                                left: parent.left
+                                right: parent.right
+                            }
+                            text: model.summary.length > 0 ? model.summary : "Новое уведомление"
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 16
+                            font.bold: true
+                            color: popup.fgColor
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
+                        }
+
+                        Text {
+                            id: bodyText
+                            anchors {
+                                top: titleText.bottom
+                                topMargin: 6
+                                left: parent.left
+                                right: parent.right
+                                bottom: parent.bottom
+                            }
+                            text: model.body
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 13
+                            color: popup.fgColor
+                            opacity: 0.85
+                            wrapMode: Text.Wrap
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
             }
         }
     }

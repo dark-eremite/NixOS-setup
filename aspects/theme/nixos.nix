@@ -122,7 +122,6 @@
 
       xdg.portal.config.niri = {
         "org.freedesktop.impl.portal.Settings" = "darkman";
-        "org.freedesktop.impl.portal.Notification" = "none";
       };
     };
 }
