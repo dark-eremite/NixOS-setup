@@ -130,18 +130,6 @@ PanelWindow {
         width: panel.bodyWidth
         transform: Translate { x: panel.slide }
 
-        Rectangle {
-            anchors.fill: parent
-            color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            color: "transparent"
-            border.width: 2
-            border.color: panel.borderColor
-        }
-
         Item {
             id: topBlock
             anchors {
@@ -151,79 +139,90 @@ PanelWindow {
             }
             height: width
 
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                border.width: 2
+                border.color: panel.borderColor
+            }
+
             Item {
-                id: avatarBox
+                id: headerBlock
                 anchors {
                     top: parent.top
                     left: parent.left
                     right: parent.right
                 }
-                height: 210
+                height: parent.height - buttons.height
 
-                Rectangle {
-                    anchors.fill: parent
-                    color: Qt.rgba(panel.fgColor.r, panel.fgColor.g, panel.fgColor.b, 0.08)
-                }
-
-                Image {
-                    id: avatar
-                    anchors.fill: parent
-                    source: panel.avatarPath.length > 0 ? "file://" + panel.avatarPath : ""
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    cache: false
-                    visible: status === Image.Ready
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    visible: !avatar.visible
-                    text: panel.userGlyph
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 64
-                    color: panel.fgColor
-                    opacity: 0.55
-                }
-            }
-
-            Rectangle {
-                id: userBand
-                anchors {
-                    top: avatarBox.bottom
-                    left: parent.left
-                    right: parent.right
-                }
-                height: 30
-                color: Qt.rgba(panel.fgColor.r, panel.fgColor.g, panel.fgColor.b, 0.06)
-
-                Rectangle {
+                Item {
+                    id: avatarBox
+                    width: 104
+                    height: 104
                     anchors {
                         top: parent.top
                         left: parent.left
-                        right: parent.right
+                        topMargin: 12
+                        leftMargin: 12
                     }
-                    height: 1
-                    color: panel.borderColor
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Qt.rgba(panel.fgColor.r, panel.fgColor.g, panel.fgColor.b, 0.08)
+                    }
+
+                    Image {
+                        id: avatar
+                        anchors.fill: parent
+                        source: panel.avatarPath.length > 0 ? "file://" + panel.avatarPath : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: false
+                        visible: status === Image.Ready
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !avatar.visible
+                        text: panel.userGlyph
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: 48
+                        color: panel.fgColor
+                        opacity: 0.55
+                    }
                 }
 
                 Text {
                     id: userNameText
-                    anchors.centerIn: parent
+                    anchors {
+                        left: avatarBox.right
+                        leftMargin: 12
+                        right: parent.right
+                        rightMargin: 12
+                        top: avatarBox.top
+                    }
                     text: panel.userName
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 13
+                    font.pixelSize: 14
                     color: panel.fgColor
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
 
             Row {
                 id: buttons
                 anchors {
-                    top: userBand.bottom
+                    bottom: parent.bottom
                     left: parent.left
                     right: parent.right
                 }
-                height: parent.height - avatarBox.height - userBand.height
+                height: 40
                 spacing: 0
 
                 Repeater {
@@ -243,22 +242,11 @@ PanelWindow {
                                 : "transparent"
                         }
 
-                        Rectangle {
-                            anchors {
-                                top: parent.top
-                                right: parent.right
-                                bottom: parent.bottom
-                            }
-                            width: 1
-                            color: panel.borderColor
-                            visible: index > 0
-                        }
-
                         Text {
                             anchors.centerIn: parent
                             text: modelData.glyph
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 26
+                            font.pixelSize: 20
                             color: parent.hovered ? panel.accentColor : panel.fgColor
                         }
 
@@ -276,13 +264,68 @@ PanelWindow {
         }
 
         Rectangle {
+            id: bottomBlock
             anchors {
                 top: topBlock.bottom
+                topMargin: 8
                 left: parent.left
                 right: parent.right
+                bottom: parent.bottom
             }
-            height: 2
-            color: panel.borderColor
+            color: Qt.rgba(bgColor.r, bgColor.g, bgColor.b, 0.92)
+            border.width: 2
+            border.color: panel.borderColor
+
+            Row {
+                id: bottomButtons
+                anchors {
+                    top: parent.top
+                    left: parent.left
+                    right: parent.right
+                }
+                height: 40
+                spacing: 0
+
+                Repeater {
+                    model: [
+                        "\u{f09e7}",
+                        "\uf0c5",
+                        "\uf1fb",
+                        "\uf233"
+                    ]
+
+                    delegate: Item {
+                        width: bottomButtons.width / 4
+                        height: bottomButtons.height
+
+                        property bool hovered: false
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: parent.hovered
+                                ? Qt.rgba(panel.accentColor.r, panel.accentColor.g,
+                                          panel.accentColor.b, 0.12)
+                                : "transparent"
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: 20
+                            color: parent.hovered ? panel.accentColor : panel.fgColor
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onEntered: parent.hovered = true
+                            onExited: parent.hovered = false
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -36,6 +36,7 @@
   fileSystems."/".options = [ "compress=zstd" ];
 
   programs.firefox.enable = true;
+  programs.direnv.enable = true;
 
   environment.systemPackages = import ../../packages.nix { inherit pkgs; };
 

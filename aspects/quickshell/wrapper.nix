@@ -17,6 +17,7 @@ let
     cp ${./MicrophonePanel.qml} $out/MicrophonePanel.qml
     cp ${./MusicPanel.qml} $out/MusicPanel.qml
     cp ${./PowerPanel.qml} $out/PowerPanel.qml
+    cp ${./NotificationPopup.qml} $out/NotificationPopup.qml
   '';
 
   wm = inputs.wrapper-manager.lib {

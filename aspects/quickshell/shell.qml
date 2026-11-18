@@ -176,7 +176,13 @@ ShellRoot {
     property int wifiBars: 1
     property int wifiConnectivity: 0
     property string wifiGlyph: wifiOffGlyph
-    property color wifiColor: fgColor
+    // Должен быть биндингом, а не сохранённым значением: при смене обоев
+    // меняется accentColor, и цвет иконки обязан обновиться сразу же.
+    // Раньше refreshWifi() присваивал его вручную — цвет висел до следующего
+    // опроса (30 с). Цвет определяем по уже выставленному глифу:
+    // off / outline → нейтральный, ethernet и подключённые → акцент.
+    property color wifiColor: (wifiGlyph === wifiOffGlyph
+        || wifiGlyph === wifiOutlineGlyph) ? fgColor : accentColor
 
     function barsFor(signal): int {
         var s = Math.max(0, Math.min(1, signal || 0));
@@ -211,17 +217,14 @@ ShellRoot {
 
         if (!wifiOn && ethConnected) {
             root.wifiGlyph = root.ethernetGlyph;
-            root.wifiColor = root.accentColor;
             return;
         }
         if (!wifiOn) {
             root.wifiGlyph = root.wifiOffGlyph;
-            root.wifiColor = root.fgColor;
             return;
         }
         if (!active) {
             root.wifiGlyph = root.wifiOutlineGlyph;
-            root.wifiColor = root.fgColor;
             return;
         }
 
@@ -235,7 +238,6 @@ ShellRoot {
 
         root.wifiBars = b + 1;
         root.wifiGlyph = glyph;
-        root.wifiColor = root.accentColor;
     }
 
     property string wifiPortalUrl: ""
@@ -526,6 +528,14 @@ ShellRoot {
     PowerPanel {
         id: powerPanel
         topInset: bar.margins.top + bar.implicitHeight
+        bgColor: root.bgColor
+        fgColor: root.fgColor
+        accentColor: root.accentColor
+        borderColor: root.borderColor
+    }
+
+    NotificationPopup {
+        id: notificationPopup
         bgColor: root.bgColor
         fgColor: root.fgColor
         accentColor: root.accentColor

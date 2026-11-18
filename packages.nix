@@ -8,4 +8,7 @@ with pkgs; [
   git
   vscode
   yandex-music
+  devenv
+  mako
+  libnotify
 ]
