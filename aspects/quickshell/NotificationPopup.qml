@@ -44,7 +44,7 @@ PanelWindow {
 
     onShownChanged: {
         if (shown) {
-            hideTimer.stop();
+            outTimer.stop();
             slidingOut = false;
             slide = travel;
             slide = 0;
@@ -86,7 +86,10 @@ PanelWindow {
         summary = n.summary || "";
         body = n.body || "";
         appName = n.appName || "";
-        shown = false;
+        if (shown) {
+            dismissTimer.restart();
+            return;
+        }
         shown = true;
     }
 
