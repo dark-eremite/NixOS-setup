@@ -64,7 +64,16 @@ PanelWindow {
 
     function toggle(): void { shown = !shown; }
 
-    signal notificationsRequested()
+    // Notification history is a section of this panel, not a separate window.
+    property bool historyShown: false
+    readonly property bool notificationsEnabled: notificationHistory.notificationsEnabled
+
+    function toggleHistory(): void { historyShown = !historyShown; }
+
+    onHistoryShownChanged: {
+        if (historyShown)
+            notificationHistory.reloadHistory();
+    }
 
     IpcHandler {
         target: "power"
@@ -72,6 +81,22 @@ PanelWindow {
         function toggle(): void { panel.toggle(); }
         function open(): void { panel.shown = true; }
         function close(): void { panel.shown = false; }
+    }
+
+    IpcHandler {
+        target: "notifications"
+
+        function toggle(): void {
+            panel.shown = true;
+            panel.historyShown = !panel.historyShown;
+        }
+        function open(): void {
+            panel.shown = true;
+            panel.historyShown = true;
+        }
+        function close(): void { panel.historyShown = false; }
+        function clear(): void { notificationHistory.clearHistory(); }
+        function toggleEnabled(): void { notificationHistory.toggleNotifications(); }
     }
 
     Process {
@@ -116,6 +141,7 @@ PanelWindow {
         } else {
             slidingOut = true;
             slide = travel;
+            historyShown = false;
             hideTimer.restart();
         }
     }
@@ -278,58 +304,86 @@ PanelWindow {
             border.width: 2
             border.color: panel.borderColor
 
-            Row {
-                id: bottomButtons
+            Item {
+                id: bottomContent
                 anchors {
-                    top: parent.top
-                    left: parent.left
-                    right: parent.right
+                    fill: parent
+                    margins: 6
                 }
-                height: 40
-                spacing: 0
 
-                Repeater {
-                    model: [
-                        { glyph: "\u{f009e}", action: "notifications" },
-                        { glyph: "\uf0c5", action: "" },
-                        { glyph: "\uf1fb", action: "" },
-                        { glyph: "\uf233", action: "" }
-                    ]
+                Row {
+                    id: bottomButtons
+                    anchors {
+                        top: parent.top
+                        left: parent.left
+                        right: parent.right
+                    }
+                    height: 40
+                    spacing: 0
 
-                    delegate: Item {
-                        width: bottomButtons.width / 4
-                        height: bottomButtons.height
+                    Repeater {
+                        model: [
+                            { glyph: "\u{f009e}", action: "notifications" },
+                            { glyph: "\uf0c5", action: "" },
+                            { glyph: "\uf1fb", action: "" },
+                            { glyph: "\uf233", action: "" }
+                        ]
 
-                        property bool hovered: false
+                        delegate: Item {
+                            width: bottomButtons.width / 4
+                            height: bottomButtons.height
 
-                        Rectangle {
-                            anchors.fill: parent
-                            color: parent.hovered
-                                ? Qt.rgba(panel.accentColor.r, panel.accentColor.g,
-                                          panel.accentColor.b, 0.12)
-                                : "transparent"
-                        }
+                            property bool hovered: false
+                            property bool active: modelData.action === "notifications"
+                                && panel.historyShown
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.glyph
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 20
-                            color: parent.hovered ? panel.accentColor : panel.fgColor
-                        }
+                            Rectangle {
+                                anchors.fill: parent
+                                color: parent.hovered || parent.active
+                                    ? Qt.rgba(panel.accentColor.r, panel.accentColor.g,
+                                              panel.accentColor.b, 0.12)
+                                    : "transparent"
+                            }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onEntered: parent.hovered = true
-                            onExited: parent.hovered = false
-                            onClicked: {
-                                if (modelData.action === "notifications")
-                                    panel.notificationsRequested();
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.glyph
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 20
+                                color: parent.hovered || parent.active
+                                    ? panel.accentColor : panel.fgColor
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: parent.hovered = true
+                                onExited: parent.hovered = false
+                                onClicked: {
+                                    if (modelData.action === "notifications")
+                                        panel.toggleHistory();
+                                }
                             }
                         }
                     }
+                }
+
+                NotificationHistoryPanel {
+                    id: notificationHistory
+                    anchors {
+                        top: bottomButtons.bottom
+                        topMargin: 8
+                        left: parent.left
+                        right: parent.right
+                        bottom: parent.bottom
+                    }
+                    visible: panel.historyShown
+
+                    bgColor: panel.bgColor
+                    fgColor: panel.fgColor
+                    accentColor: panel.accentColor
+                    borderColor: panel.borderColor
                 }
             }
         }

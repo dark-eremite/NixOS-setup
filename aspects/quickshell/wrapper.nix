@@ -5,26 +5,26 @@
 let
   shellDir = pkgs.runCommand "quickshell-config" { } ''
     mkdir -p $out
-    cp ${./shell.qml} $out/shell.qml
-    cp ${./BluetoothPanel.qml} $out/BluetoothPanel.qml
-    cp ${./BtSection.qml} $out/BtSection.qml
-    cp ${./WifiPanel.qml} $out/WifiPanel.qml
-    cp ${./WifiSection.qml} $out/WifiSection.qml
-    cp ${./AudioPanel.qml} $out/AudioPanel.qml
-    cp ${./VolumeSlider.qml} $out/VolumeSlider.qml
-    cp ${./OutputSection.qml} $out/OutputSection.qml
-    cp ${./StreamSection.qml} $out/StreamSection.qml
-    cp ${./MicrophonePanel.qml} $out/MicrophonePanel.qml
-    cp ${./MusicPanel.qml} $out/MusicPanel.qml
-    cp ${./PowerPanel.qml} $out/PowerPanel.qml
-    cp ${./NotificationPopup.qml} $out/NotificationPopup.qml
-    cp ${./NotificationHistoryPanel.qml} $out/NotificationHistoryPanel.qml
+    cp ${./bar/shell.qml} $out/shell.qml
+    cp ${./bar/BluetoothPanel.qml} $out/BluetoothPanel.qml
+    cp ${./bar/BtSection.qml} $out/BtSection.qml
+    cp ${./bar/WifiPanel.qml} $out/WifiPanel.qml
+    cp ${./bar/WifiSection.qml} $out/WifiSection.qml
+    cp ${./bar/AudioPanel.qml} $out/AudioPanel.qml
+    cp ${./bar/VolumeSlider.qml} $out/VolumeSlider.qml
+    cp ${./bar/OutputSection.qml} $out/OutputSection.qml
+    cp ${./bar/StreamSection.qml} $out/StreamSection.qml
+    cp ${./bar/MicrophonePanel.qml} $out/MicrophonePanel.qml
+    cp ${./bar/MusicPanel.qml} $out/MusicPanel.qml
+    cp ${./powerpanel/PowerPanel.qml} $out/PowerPanel.qml
+    cp ${./powerpanel/NotificationPopup.qml} $out/NotificationPopup.qml
+    cp ${./powerpanel/NotificationHistoryPanel.qml} $out/NotificationHistoryPanel.qml
   '';
 
   notificationHistory = pkgs.writers.writePython3Bin "notification-history" {
     libraries = [ pkgs.python3Packages.dbus-fast ];
     flakeIgnore = [ "E265" "E501" "W503" ];
-  } (builtins.readFile ./scripts/notification-history.py);
+  } (builtins.readFile ./powerpanel/scripts/notification-history.py);
 
   wm = inputs.wrapper-manager.lib {
     inherit pkgs;
