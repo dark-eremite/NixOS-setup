@@ -19,6 +19,8 @@ let
     cp ${./powerpanel/PowerPanel.qml} $out/PowerPanel.qml
     cp ${./powerpanel/NotificationPopup.qml} $out/NotificationPopup.qml
     cp ${./powerpanel/NotificationHistoryPanel.qml} $out/NotificationHistoryPanel.qml
+    cp ${./powerpanel/ClipboardHistoryPanel.qml} $out/ClipboardHistoryPanel.qml
+    cp ${./powerpanel/ColorPickerPanel.qml} $out/ColorPickerPanel.qml
   '';
 
   notificationHistory = pkgs.writers.writePython3Bin "notification-history" {

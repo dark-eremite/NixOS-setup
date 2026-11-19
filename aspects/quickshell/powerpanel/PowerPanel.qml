@@ -66,13 +66,55 @@ PanelWindow {
 
     // Notification history is a section of this panel, not a separate window.
     property bool historyShown: false
+    property bool clipboardShown: false
+    property bool colorPickerShown: false
     readonly property bool notificationsEnabled: notificationHistory.notificationsEnabled
 
-    function toggleHistory(): void { historyShown = !historyShown; }
+    function toggleHistory(): void {
+        if (!historyShown) {
+            clipboardShown = false;
+            colorPickerShown = false;
+        }
+        historyShown = !historyShown;
+    }
+
+    function toggleClipboard(): void {
+        if (!clipboardShown) {
+            historyShown = false;
+            colorPickerShown = false;
+        }
+        clipboardShown = !clipboardShown;
+    }
+
+    function toggleColorPicker(): void {
+        if (!colorPickerShown) {
+            historyShown = false;
+            clipboardShown = false;
+        }
+        colorPickerShown = !colorPickerShown;
+    }
 
     onHistoryShownChanged: {
-        if (historyShown)
+        if (historyShown) {
+            clipboardShown = false;
+            colorPickerShown = false;
             notificationHistory.reloadHistory();
+        }
+    }
+
+    onClipboardShownChanged: {
+        if (clipboardShown) {
+            historyShown = false;
+            colorPickerShown = false;
+            clipboardHistory.reloadHistory();
+        }
+    }
+
+    onColorPickerShownChanged: {
+        if (colorPickerShown) {
+            historyShown = false;
+            clipboardShown = false;
+        }
     }
 
     IpcHandler {
@@ -142,6 +184,8 @@ PanelWindow {
             slidingOut = true;
             slide = travel;
             historyShown = false;
+            clipboardShown = false;
+            colorPickerShown = false;
             hideTimer.restart();
         }
     }
@@ -324,8 +368,8 @@ PanelWindow {
                     Repeater {
                         model: [
                             { glyph: "\u{f009e}", action: "notifications" },
-                            { glyph: "\uf0c5", action: "" },
-                            { glyph: "\uf1fb", action: "" },
+                            { glyph: "\uf0c5", action: "clipboard" },
+                            { glyph: "\uf1fb", action: "colorpicker" },
                             { glyph: "\uf233", action: "" }
                         ]
 
@@ -334,8 +378,12 @@ PanelWindow {
                             height: bottomButtons.height
 
                             property bool hovered: false
-                            property bool active: modelData.action === "notifications"
-                                && panel.historyShown
+                            property bool active: (modelData.action === "notifications"
+                                && panel.historyShown)
+                                || (modelData.action === "clipboard"
+                                    && panel.clipboardShown)
+                                || (modelData.action === "colorpicker"
+                                    && panel.colorPickerShown)
 
                             Rectangle {
                                 anchors.fill: parent
@@ -363,6 +411,10 @@ PanelWindow {
                                 onClicked: {
                                     if (modelData.action === "notifications")
                                         panel.toggleHistory();
+                                    else if (modelData.action === "clipboard")
+                                        panel.toggleClipboard();
+                                    else if (modelData.action === "colorpicker")
+                                        panel.toggleColorPicker();
                                 }
                             }
                         }
@@ -379,6 +431,40 @@ PanelWindow {
                         bottom: parent.bottom
                     }
                     visible: panel.historyShown
+
+                    bgColor: panel.bgColor
+                    fgColor: panel.fgColor
+                    accentColor: panel.accentColor
+                    borderColor: panel.borderColor
+                }
+
+                ClipboardHistoryPanel {
+                    id: clipboardHistory
+                    anchors {
+                        top: bottomButtons.bottom
+                        topMargin: 8
+                        left: parent.left
+                        right: parent.right
+                        bottom: parent.bottom
+                    }
+                    visible: panel.clipboardShown
+
+                    bgColor: panel.bgColor
+                    fgColor: panel.fgColor
+                    accentColor: panel.accentColor
+                    borderColor: panel.borderColor
+                }
+
+                ColorPickerPanel {
+                    id: colorPickerPanel
+                    anchors {
+                        top: bottomButtons.bottom
+                        topMargin: 8
+                        left: parent.left
+                        right: parent.right
+                        bottom: parent.bottom
+                    }
+                    visible: panel.colorPickerShown
 
                     bgColor: panel.bgColor
                     fgColor: panel.fgColor
