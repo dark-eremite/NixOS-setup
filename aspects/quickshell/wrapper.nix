@@ -17,10 +17,13 @@ let
     cp ${./bar/MicrophonePanel.qml} $out/MicrophonePanel.qml
     cp ${./bar/MusicPanel.qml} $out/MusicPanel.qml
     cp ${./powerpanel/PowerPanel.qml} $out/PowerPanel.qml
+    cp ${./powerpanel/TrayMenu.qml} $out/TrayMenu.qml
     cp ${./powerpanel/NotificationPopup.qml} $out/NotificationPopup.qml
     cp ${./powerpanel/NotificationHistoryPanel.qml} $out/NotificationHistoryPanel.qml
     cp ${./powerpanel/ClipboardHistoryPanel.qml} $out/ClipboardHistoryPanel.qml
     cp ${./powerpanel/ColorPickerPanel.qml} $out/ColorPickerPanel.qml
+    cp ${./powerpanel/ScreenColorPicker.qml} $out/ScreenColorPicker.qml
+    cp ${./powerpanel/PortsPanel.qml} $out/PortsPanel.qml
   '';
 
   notificationHistory = pkgs.writers.writePython3Bin "notification-history" {

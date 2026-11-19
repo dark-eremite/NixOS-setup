@@ -534,6 +534,24 @@ ShellRoot {
         borderColor: root.borderColor
     }
 
+    ScreenColorPicker {
+        id: screenColorPicker
+    }
+
+    Connections {
+        target: powerPanel
+        function onScreenPickRequested(): void {
+            screenColorPicker.start();
+        }
+    }
+
+    Connections {
+        target: screenColorPicker
+        function onPicked(hex): void {
+            powerPanel.applyPickedColor(hex);
+        }
+    }
+
     NotificationPopup {
         id: notificationPopup
         bgColor: root.bgColor

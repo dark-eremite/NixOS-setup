@@ -11,6 +11,8 @@
       environment.systemPackages = with pkgs; [
         cliphist
         wl-clipboard
+        grim
+        iproute2
       ];
 
       # Notification history daemon used by the power panel and notification popup.

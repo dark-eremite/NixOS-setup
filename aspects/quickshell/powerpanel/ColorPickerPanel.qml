@@ -14,6 +14,8 @@ Item {
     property real saturation: 1
     property real value: 1
 
+    signal requestScreenPick()
+
     function clamp01(x: real): real {
         return Math.max(0, Math.min(1, x));
     }
@@ -36,6 +38,34 @@ Item {
     function toHex(n: int): string {
         var s = Math.max(0, Math.min(255, Math.round(n))).toString(16).toUpperCase();
         return s.length < 2 ? "0" + s : s;
+    }
+
+    function setFromHex(hex: string): void {
+        var s = String(hex || "").trim();
+        if (s.charAt(0) === "#")
+            s = s.slice(1);
+        if (s.length === 3)
+            s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+        if (s.length !== 6)
+            return;
+        var r = parseInt(s.slice(0, 2), 16) / 255;
+        var g = parseInt(s.slice(2, 4), 16) / 255;
+        var b = parseInt(s.slice(4, 6), 16) / 255;
+        if (isNaN(r) || isNaN(g) || isNaN(b))
+            return;
+        var max = Math.max(r, g, b), min = Math.min(r, g, b);
+        var d = max - min;
+        var h = 0;
+        if (d !== 0) {
+            if (max === r) h = 60 * (((g - b) / d) % 6);
+            else if (max === g) h = 60 * ((b - r) / d + 2);
+            else h = 60 * ((r - g) / d + 4);
+        }
+        if (h < 0) h += 360;
+        var sat = max === 0 ? 0 : d / max;
+        picker.hue = h;
+        picker.saturation = sat;
+        picker.value = max;
     }
 
     readonly property color currentColor: hsvToRgb(hue, saturation, value)
@@ -78,14 +108,56 @@ Item {
         }
         spacing: 10
 
-        Row {
+        Item {
+            id: pickButton
+            width: content.width
+            height: 30
+
+            property bool hovered: false
+
+            Rectangle {
+                anchors.fill: parent
+                color: pickButton.hovered
+                    ? Qt.rgba(picker.accentColor.r, picker.accentColor.g,
+                              picker.accentColor.b, 0.12)
+                    : Qt.rgba(picker.fgColor.r, picker.fgColor.g,
+                              picker.fgColor.b, 0.04)
+                border.width: 1
+                border.color: pickButton.hovered
+                    ? picker.accentColor
+                    : Qt.rgba(picker.borderColor.r, picker.borderColor.g,
+                              picker.borderColor.b, 0.5)
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "\uf1fb"
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: 16
+                color: pickButton.hovered ? picker.accentColor : picker.fgColor
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: pickButton.hovered = true
+                onExited: pickButton.hovered = false
+                onClicked: picker.requestScreenPick()
+            }
+        }
+
+        Item {
             id: pickerRow
-            spacing: 10
+            width: content.width
+            height: 120
 
             Item {
                 id: svSquare
                 width: 120
                 height: 120
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
 
                 Rectangle {
                     anchors.fill: parent
@@ -141,6 +213,8 @@ Item {
                 id: hueRing
                 width: 120
                 height: 120
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
 
                 readonly property real cx: width / 2
                 readonly property real cy: height / 2

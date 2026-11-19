@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.SystemTray
+import qs
 
 PanelWindow {
     id: panel
@@ -68,36 +70,131 @@ PanelWindow {
     property bool historyShown: false
     property bool clipboardShown: false
     property bool colorPickerShown: false
+    property bool portsShown: false
     readonly property bool notificationsEnabled: notificationHistory.notificationsEnabled
 
     function toggleHistory(): void {
+        panel.closeTrayMenu();
         if (!historyShown) {
             clipboardShown = false;
             colorPickerShown = false;
+            portsShown = false;
         }
         historyShown = !historyShown;
     }
 
     function toggleClipboard(): void {
+        panel.closeTrayMenu();
         if (!clipboardShown) {
             historyShown = false;
             colorPickerShown = false;
+            portsShown = false;
         }
         clipboardShown = !clipboardShown;
     }
 
     function toggleColorPicker(): void {
+        panel.closeTrayMenu();
         if (!colorPickerShown) {
             historyShown = false;
             clipboardShown = false;
+            portsShown = false;
         }
         colorPickerShown = !colorPickerShown;
+    }
+
+    function togglePorts(): void {
+        panel.closeTrayMenu();
+        if (!portsShown) {
+            historyShown = false;
+            clipboardShown = false;
+            colorPickerShown = false;
+        }
+        portsShown = !portsShown;
+    }
+
+    // The bottom block doubles as a system tray: the four built-in actions
+    // and registered SNI apps share one grid of 6 columns, up to 4 rows.
+    readonly property int trayColumns: 6
+    readonly property int trayRowsMax: 4
+    readonly property int trayCellHeight: 36
+    readonly property int trayCapacity: trayColumns * trayRowsMax
+
+    readonly property var fixedTrayActions: [
+        { glyph: "\u{f009e}", action: "notifications" },
+        { glyph: "\uf0c5", action: "clipboard" },
+        { glyph: "\uf1fb", action: "colorpicker" },
+        { glyph: "\uf233", action: "ports" }
+    ]
+
+    property var trayModel: []
+    property var activeTrayItem: null
+    property var trayMenuHandle: null
+    property bool trayMenuOpen: false
+
+    function rebuildTrayModel(): void {
+        var list = [];
+        for (var i = 0; i < panel.fixedTrayActions.length; i++)
+            list.push({ action: panel.fixedTrayActions[i] });
+
+        var items = SystemTray.items ? SystemTray.items.values : [];
+        for (var j = 0; j < items.length && list.length < panel.trayCapacity; j++)
+            list.push({ trayItem: items[j] });
+
+        panel.trayModel = list;
+    }
+
+    function closeTrayMenu(): void {
+        panel.trayMenuOpen = false;
+        panel.trayMenuHandle = null;
+        panel.activeTrayItem = null;
+    }
+
+    function showTrayMenu(item): void {
+        if (!item || !item.hasMenu) {
+            panel.closeTrayMenu();
+            return;
+        }
+        if (panel.activeTrayItem === item && panel.trayMenuOpen) {
+            panel.closeTrayMenu();
+            return;
+        }
+        panel.historyShown = false;
+        panel.clipboardShown = false;
+        panel.colorPickerShown = false;
+        panel.portsShown = false;
+        panel.activeTrayItem = item;
+        panel.trayMenuHandle = item.menu;
+        panel.trayMenuOpen = true;
+    }
+
+    function activateFixedAction(action: string): void {
+        if (action === "notifications") panel.toggleHistory();
+        else if (action === "clipboard") panel.toggleClipboard();
+        else if (action === "colorpicker") panel.toggleColorPicker();
+        else if (action === "ports") panel.togglePorts();
+    }
+
+    Component.onCompleted: panel.rebuildTrayModel()
+
+    Connections {
+        target: SystemTray.items
+        function onValuesChanged(): void { panel.rebuildTrayModel(); }
+    }
+
+    Connections {
+        target: panel.activeTrayItem
+        function onHasMenuChanged(): void {
+            if (!panel.activeTrayItem || !panel.activeTrayItem.hasMenu)
+                panel.closeTrayMenu();
+        }
     }
 
     onHistoryShownChanged: {
         if (historyShown) {
             clipboardShown = false;
             colorPickerShown = false;
+            portsShown = false;
             notificationHistory.reloadHistory();
         }
     }
@@ -106,6 +203,7 @@ PanelWindow {
         if (clipboardShown) {
             historyShown = false;
             colorPickerShown = false;
+            portsShown = false;
             clipboardHistory.reloadHistory();
         }
     }
@@ -114,6 +212,16 @@ PanelWindow {
         if (colorPickerShown) {
             historyShown = false;
             clipboardShown = false;
+            portsShown = false;
+        }
+    }
+
+    onPortsShownChanged: {
+        if (portsShown) {
+            historyShown = false;
+            clipboardShown = false;
+            colorPickerShown = false;
+            portsPanel.reloadPorts();
         }
     }
 
@@ -139,6 +247,29 @@ PanelWindow {
         function close(): void { panel.historyShown = false; }
         function clear(): void { notificationHistory.clearHistory(); }
         function toggleEnabled(): void { notificationHistory.toggleNotifications(); }
+    }
+
+    signal screenPickRequested()
+
+    function applyPickedColor(hex: string): void {
+        var h = String(hex || "").toUpperCase();
+        if (h.length > 0) {
+            colorPickerPanel.setFromHex(h);
+            pickCopyProc.command = [
+                "sh", "-c", "printf '%s' \"$1\" | wl-copy", "--", h
+            ];
+            pickCopyProc.running = false;
+            pickCopyProc.running = true;
+        }
+        panel.historyShown = false;
+        panel.clipboardShown = false;
+        panel.portsShown = false;
+        panel.colorPickerShown = true;
+        panel.shown = true;
+    }
+
+    Process {
+        id: pickCopyProc
     }
 
     Process {
@@ -186,6 +317,8 @@ PanelWindow {
             historyShown = false;
             clipboardShown = false;
             colorPickerShown = false;
+            portsShown = false;
+            panel.closeTrayMenu();
             hideTimer.restart();
         }
     }
@@ -355,35 +488,45 @@ PanelWindow {
                     margins: 6
                 }
 
-                Row {
-                    id: bottomButtons
+                MouseArea {
+                    anchors.fill: parent
+                    z: -1
+                    onClicked: panel.closeTrayMenu()
+                }
+
+                Grid {
+                    id: trayGrid
                     anchors {
                         top: parent.top
                         left: parent.left
                         right: parent.right
                     }
-                    height: 40
-                    spacing: 0
+                    columns: panel.trayColumns
+                    columnSpacing: 0
+                    rowSpacing: 0
+                    height: Math.ceil(panel.trayModel.length / panel.trayColumns)
+                        * panel.trayCellHeight
+                    z: 1
 
                     Repeater {
-                        model: [
-                            { glyph: "\u{f009e}", action: "notifications" },
-                            { glyph: "\uf0c5", action: "clipboard" },
-                            { glyph: "\uf1fb", action: "colorpicker" },
-                            { glyph: "\uf233", action: "" }
-                        ]
+                        model: panel.trayModel
 
                         delegate: Item {
-                            width: bottomButtons.width / 4
-                            height: bottomButtons.height
+                            id: cell
+                            width: trayGrid.width / panel.trayColumns
+                            height: panel.trayCellHeight
 
+                            property var trayItem: modelData.trayItem || null
+                            property var action: modelData.action || null
                             property bool hovered: false
-                            property bool active: (modelData.action === "notifications"
-                                && panel.historyShown)
-                                || (modelData.action === "clipboard"
-                                    && panel.clipboardShown)
-                                || (modelData.action === "colorpicker"
-                                    && panel.colorPickerShown)
+                            property bool needsAttention: cell.trayItem
+                                && cell.trayItem.status === Status.NeedsAttention
+                            property bool active: cell.action && (
+                                (cell.action.action === "notifications" && panel.historyShown)
+                                || (cell.action.action === "clipboard" && panel.clipboardShown)
+                                || (cell.action.action === "colorpicker" && panel.colorPickerShown)
+                                || (cell.action.action === "ports" && panel.portsShown)
+                            )
 
                             Rectangle {
                                 anchors.fill: parent
@@ -393,39 +536,90 @@ PanelWindow {
                                     : "transparent"
                             }
 
+                            Rectangle {
+                                anchors.fill: parent
+                                color: "transparent"
+                                border.width: parent.needsAttention ? 2 : 0
+                                border.color: panel.accentColor
+                            }
+
+                            Image {
+                                id: trayIcon
+                                anchors.centerIn: parent
+                                width: 20
+                                height: 20
+                                source: cell.trayItem ? cell.trayItem.icon : ""
+                                sourceSize.width: 20
+                                sourceSize.height: 20
+                                fillMode: Image.PreserveAspectFit
+                                visible: cell.trayItem && status === Image.Ready
+                            }
+
                             Text {
                                 anchors.centerIn: parent
-                                text: modelData.glyph
+                                text: cell.trayItem
+                                    ? (cell.trayItem.title
+                                        ? cell.trayItem.title.charAt(0).toUpperCase()
+                                        : "\uf108")
+                                    : cell.action.glyph
                                 font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 20
+                                font.pixelSize: cell.trayItem ? 14 : 20
                                 color: parent.hovered || parent.active
                                     ? panel.accentColor : panel.fgColor
+                                visible: !cell.trayItem || trayIcon.status !== Image.Ready
                             }
 
                             MouseArea {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onEntered: parent.hovered = true
-                                onExited: parent.hovered = false
-                                onClicked: {
-                                    if (modelData.action === "notifications")
-                                        panel.toggleHistory();
-                                    else if (modelData.action === "clipboard")
-                                        panel.toggleClipboard();
-                                    else if (modelData.action === "colorpicker")
-                                        panel.toggleColorPicker();
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                onEntered: cell.hovered = true
+                                onExited: cell.hovered = false
+                                onPressed: function (mouse) {
+                                    if (cell.trayItem) {
+                                        if (mouse.button === Qt.RightButton
+                                            || cell.trayItem.onlyMenu)
+                                            panel.showTrayMenu(cell.trayItem);
+                                        else if (mouse.button === Qt.MiddleButton)
+                                            cell.trayItem.secondaryActivate();
+                                        else {
+                                            panel.closeTrayMenu();
+                                            cell.trayItem.activate();
+                                        }
+                                    } else if (cell.action) {
+                                        panel.activateFixedAction(cell.action.action);
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
+                TrayMenu {
+                    id: trayMenu
+                    anchors {
+                        top: trayGrid.bottom
+                        topMargin: 8
+                        left: parent.left
+                        right: parent.right
+                    }
+                    z: 5
+                    visible: panel.trayMenuOpen && !!panel.trayMenuHandle
+                    open: panel.trayMenuOpen
+                    rootHandle: panel.trayMenuHandle
+                    bgColor: panel.bgColor
+                    fgColor: panel.fgColor
+                    accentColor: panel.accentColor
+                    borderColor: panel.borderColor
+                    onDismissRequested: panel.closeTrayMenu()
+                }
+
                 NotificationHistoryPanel {
                     id: notificationHistory
                     anchors {
-                        top: bottomButtons.bottom
-                        topMargin: 8
+                        top: trayGrid.bottom
+                        topMargin: trayMenu.visible ? trayMenu.height + 16 : 8
                         left: parent.left
                         right: parent.right
                         bottom: parent.bottom
@@ -441,8 +635,8 @@ PanelWindow {
                 ClipboardHistoryPanel {
                     id: clipboardHistory
                     anchors {
-                        top: bottomButtons.bottom
-                        topMargin: 8
+                        top: trayGrid.bottom
+                        topMargin: trayMenu.visible ? trayMenu.height + 16 : 8
                         left: parent.left
                         right: parent.right
                         bottom: parent.bottom
@@ -458,13 +652,35 @@ PanelWindow {
                 ColorPickerPanel {
                     id: colorPickerPanel
                     anchors {
-                        top: bottomButtons.bottom
-                        topMargin: 8
+                        top: trayGrid.bottom
+                        topMargin: trayMenu.visible ? trayMenu.height + 16 : 8
                         left: parent.left
                         right: parent.right
                         bottom: parent.bottom
                     }
                     visible: panel.colorPickerShown
+
+                    bgColor: panel.bgColor
+                    fgColor: panel.fgColor
+                    accentColor: panel.accentColor
+                    borderColor: panel.borderColor
+
+                    onRequestScreenPick: {
+                        panel.shown = false;
+                        panel.screenPickRequested();
+                    }
+                }
+
+                PortsPanel {
+                    id: portsPanel
+                    anchors {
+                        top: trayGrid.bottom
+                        topMargin: trayMenu.visible ? trayMenu.height + 16 : 8
+                        left: parent.left
+                        right: parent.right
+                        bottom: parent.bottom
+                    }
+                    visible: panel.portsShown
 
                     bgColor: panel.bgColor
                     fgColor: panel.fgColor
