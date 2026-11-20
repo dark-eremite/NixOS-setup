@@ -20,7 +20,7 @@ ShellRoot {
     property color bgColor: fallbackBg
     property color fgColor: fallbackFg
     property color accentColor: fallbackAccent
-    property color onAccentColor: fallbackOnAccent
+    property color inverseAccentColor: fallbackOnAccent
     property color borderColor: fallbackBorder
 
     property bool btEnabled: Bluetooth.defaultAdapter
@@ -332,7 +332,7 @@ ShellRoot {
             bgColor = fallbackBg;
             fgColor = fallbackFg;
             accentColor = fallbackAccent;
-            onAccentColor = fallbackOnAccent;
+            inverseAccentColor = fallbackOnAccent;
             borderColor = fallbackBorder;
             return;
         }
@@ -344,7 +344,7 @@ ShellRoot {
             if (keys[i] === "bg") bgColor = c;
             else if (keys[i] === "fg") fgColor = c;
             else if (keys[i] === "accent") accentColor = c;
-            else if (keys[i] === "on_accent") onAccentColor = c;
+            else if (keys[i] === "on_accent") inverseAccentColor = c;
             else borderColor = c;
         }
     }
@@ -531,6 +531,7 @@ ShellRoot {
         bgColor: root.bgColor
         fgColor: root.fgColor
         accentColor: root.accentColor
+        inverseAccentColor: root.inverseAccentColor
         borderColor: root.borderColor
     }
 
@@ -664,7 +665,7 @@ ShellRoot {
                 text: root.formatClock(clock.date)
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 12
-                color: onAccentColor
+                color: inverseAccentColor
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
@@ -753,7 +754,7 @@ ShellRoot {
                         + "<font color='" + root.musicSubduedColor.toString() + "'>"
                         + "  " + root.escapeHtml(root.musicArtist) + "</font>"
                     : "<font color='" + root.musicSubduedColor.toString()
-                        + "'>Нет музыки</font>"
+                        + "'>No music</font>"
                 textFormat: Text.StyledText
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 11
@@ -822,7 +823,7 @@ ShellRoot {
                 visible: !bar.externalFocus
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: 11
-                color: onAccentColor
+                color: inverseAccentColor
             }
 
             Behavior on x {
@@ -880,7 +881,7 @@ ShellRoot {
                         : (isWifi ? root.wifiGlyph
                         : (isVolume ? root.audioGlyph
                         : (isMic ? root.micGlyph : modelData.glyph)))
-                    property color tint: isNixos ? onAccentColor
+                    property color tint: isNixos ? inverseAccentColor
                         : (isBt ? root.btColor
                         : (isWifi ? root.wifiColor
                         : (isVolume ? root.audioColor

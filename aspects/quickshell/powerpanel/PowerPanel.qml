@@ -36,6 +36,8 @@ PanelWindow {
     property color bgColor: "#111318"
     property color fgColor: "#e1e2e9"
     property color accentColor: "#a7c8ff"
+    // Инверсивно-акцентный цвет: тёмный значок на акцентном фоне (как nix в баре).
+    property color inverseAccentColor: "#132f60"
     property color borderColor: "#59FFFFFF"
 
     onClosed: shown = false
@@ -56,8 +58,20 @@ PanelWindow {
     readonly property int uptimeMinutes: Math.floor((uptimeSeconds % 3600) / 60)
 
     property int cpuLoad: 0
-    property int memLoad: 0
     property int gpuLoad: 0
+    property int cpuTemp: 0
+    property int gpuTemp: 0
+    property real memUsedGb: 0
+    property real memTotalGb: 0
+    property bool hasBattery: false
+    property int batteryPercent: 0
+    property real batteryHours: -1
+
+    property int netUpSpeed: 0
+    property int netDownSpeed: 0
+    property var netUpHistory: []
+    property var netDownHistory: []
+    property int netRevision: 0
 
     readonly property string powerGlyph: "\u{f0425}"
     readonly property string rebootGlyph: "\u{f0709}"
@@ -68,6 +82,10 @@ PanelWindow {
     readonly property string cpuGlyph: "\u{f4bc}"
     readonly property string memoryGlyph: "\u{efc5}"
     readonly property string gpuGlyph: "\u{f108}"
+    readonly property string upGlyph: "\uf062"
+    readonly property string downGlyph: "\uf063"
+    readonly property string wifiGlyph: "\uf1eb"
+    readonly property string batteryGlyph: "\uf240"
 
     readonly property var actions: [
         { glyph: lockGlyph, command: [ "hyprlock" ] },
@@ -76,6 +94,12 @@ PanelWindow {
         { glyph: suspendGlyph, command: [ "systemctl", "suspend" ] },
         { glyph: logoutGlyph, command: [ "niri", "msg", "action", "quit" ] }
     ]
+
+    function formatSpeed(bytes: int): string {
+        if (bytes < 1024) return bytes + "B/s";
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + "K/s";
+        return (bytes / 1048576).toFixed(1) + "M/s";
+    }
 
     function toggle(): void { shown = !shown; }
 
@@ -325,6 +349,22 @@ PanelWindow {
         }
     }
 
+    // Ноут или ПК: наличие батареи меняет раскладку кругов.
+    Process {
+        running: true
+        command: [
+            "sh", "-c",
+            "for b in /sys/class/power_supply/*; do "
+            + "[ \"$(cat \"$b/type\" 2>/dev/null)\" = Battery ] && "
+            + "{ printf 1; exit; }; done"
+        ]
+
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: panel.hasBattery = this.text.trim() === "1"
+        }
+    }
+
     Timer {
         interval: 2500
         repeat: true
@@ -342,33 +382,106 @@ PanelWindow {
             "sh", "-c",
             "cpu_sample() { awk '/^cpu /{t=0; for(i=2;i<=NF;i++)t+=$i; "
             + "printf \"%d %d\\n\", t, $5+$6}' /proc/stat; }; "
+            + "cpu_temp() { for z in /sys/class/thermal/thermal_zone*; do "
+            + "[ \"$(cat \"$z/type\" 2>/dev/null)\" = x86_pkg_temp ] && "
+            + "{ echo $(( $(cat \"$z/temp\" 2>/dev/null) / 1000 )); return; }; done; "
+            + "for h in /sys/class/hwmon/hwmon*; do "
+            + "[ \"$(cat \"$h/name\" 2>/dev/null)\" = coretemp ] && "
+            + "[ -f \"$h/temp1_input\" ] && "
+            + "{ echo $(( $(cat \"$h/temp1_input\") / 1000 )); return; }; done; echo 0; }; "
+            + "gpu_temp() { if command -v nvidia-smi >/dev/null 2>&1; then "
+            + "t=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits "
+            + "2>/dev/null | head -1); "
+            + "[ -n \"$t\" ] && { echo \"$t\"; return; }; fi; "
+            + "for h in /sys/class/hwmon/hwmon*; do "
+            + "case \"$(cat \"$h/name\" 2>/dev/null)\" in "
+            + "amdgpu|i915) [ -f \"$h/temp1_input\" ] && "
+            + "{ echo $(( $(cat \"$h/temp1_input\") / 1000 )); return; };; "
+            + "esac; done; cpu_temp; }; "
+            + "iface=$(awk 'NR>1 && $2==\"00000000\" {print $1; exit}' /proc/net/route); "
+            + "if [ -z \"$iface\" ]; then for n in /sys/class/net/*; do "
+            + "b=${n##*/}; [ \"$b\" = lo ] && continue; "
+            + "[ \"$(cat \"$n/operstate\" 2>/dev/null)\" = up ] && { iface=\"$b\"; break; }; "
+            + "done; fi; "
             + "gpu_path=/sys/class/drm/card1/gt/gt0/rc6_residency_ms; "
             + "[ -f \"$gpu_path\" ] || gpu_path=/sys/class/drm/card0/gt/gt0/rc6_residency_ms; "
-            + "c0=$(cpu_sample); r0=$(cat \"$gpu_path\" 2>/dev/null || echo 0); sleep 1; "
+            + "bat_path=; for b in /sys/class/power_supply/*; do "
+            + "[ \"$(cat \"$b/type\" 2>/dev/null)\" = Battery ] && "
+            + "{ bat_path=\"$b\"; break; }; done; "
+            + "bat_status=$(cat \"$bat_path/status\" 2>/dev/null); "
+            + "bat_charge0=$(cat \"$bat_path/charge_now\" 2>/dev/null || echo 0); "
+            + "bat_cur=$(awk -F= '/^POWER_SUPPLY_CURRENT_NOW=/{print $2}' "
+            + "\"$bat_path/uevent\" 2>/dev/null); "
+            + "[ -z \"$bat_cur\" ] && bat_cur=0; "
+            + "[ \"$bat_cur\" -lt 0 ] && bat_cur=$((0 - bat_cur)); "
+            + "c0=$(cpu_sample); r0=$(cat \"$gpu_path\" 2>/dev/null || echo 0); "
+            + "rx0=$(cat \"/sys/class/net/$iface/statistics/rx_bytes\" 2>/dev/null || echo 0); "
+            + "tx0=$(cat \"/sys/class/net/$iface/statistics/tx_bytes\" 2>/dev/null || echo 0); "
+            + "sleep 1; "
+            + "bat_charge1=$(cat \"$bat_path/charge_now\" 2>/dev/null || echo 0); "
+            + "bat_delta=$(( (bat_charge0 - bat_charge1) * 3600 )); "
+            + "[ \"$bat_status\" = Discharging ] && [ \"$bat_delta\" -gt 0 ] "
+            + "&& bat_cur=$bat_delta; "
+            + "bat_hours=-1; "
+            + "[ \"$bat_cur\" -gt 0 ] && [ \"$bat_charge1\" -gt 0 ] "
+            + "&& bat_hours=$(awk -v c=\"$bat_charge1\" -v i=\"$bat_cur\" "
+            + "'BEGIN{printf \"%.1f\", c/i}'); "
             + "c1=$(cpu_sample); r1=$(cat \"$gpu_path\" 2>/dev/null || echo 0); "
+            + "rx1=$(cat \"/sys/class/net/$iface/statistics/rx_bytes\" 2>/dev/null || echo 0); "
+            + "tx1=$(cat \"/sys/class/net/$iface/statistics/tx_bytes\" 2>/dev/null || echo 0); "
+            + "down=$((rx1-rx0)); up=$((tx1-tx0)); "
+            + "[ \"$down\" -lt 0 ] && down=0; [ \"$up\" -lt 0 ] && up=0; "
+            + "ct=$(cpu_temp); gt=$(gpu_temp); "
+            + "bat=$(for b in /sys/class/power_supply/*; do "
+            + "[ \"$(cat \"$b/type\" 2>/dev/null)\" = Battery ] && "
+            + "{ cat \"$b/capacity\" 2>/dev/null; exit; }; done); "
+            + "[ -z \"$bat\" ] && bat=0; "
             + "mem=$(awk '/MemTotal:/{t=$2} /MemAvailable:/{a=$2} "
-            + "END{if(t>0)printf \"%d\",(t-a)*100/t; else print 0}' /proc/meminfo); "
+            + "END{if(t>0)printf \"%.1f %.1f\",(t-a)/1048576,t/1048576; "
+            + "else print \"0 0\"}' /proc/meminfo); "
             + "nv=$(command -v nvidia-smi >/dev/null 2>&1 && "
             + "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits "
             + "2>/dev/null | head -1); "
             + "awk -v c0=\"$c0\" -v c1=\"$c1\" -v r0=\"$r0\" -v r1=\"$r1\" "
-            + "-v m=\"$mem\" -v nv=\"$nv\" 'BEGIN{ "
-            + "split(c0,a); split(c1,b); dt=b[1]-a[1]; idle=b[2]-a[2]; "
+            + "-v m=\"$mem\" -v nv=\"$nv\" -v ct=\"$ct\" -v gt=\"$gt\" "
+            + "-v dn=\"$down\" -v up=\"$up\" -v bat=\"$bat\" -v bh=\"$bat_hours\" 'BEGIN{ "
+            + "split(c0,a); split(c1,b); split(m,mm); "
+            + "dt=b[1]-a[1]; idle=b[2]-a[2]; "
             + "cpu=(dt>0)?(dt-idle)*100/dt:0; gpu=-1; "
             + "if(nv!=\"\") gpu=nv; "
             + "else if(r0!=\"\" && r1!=\"\") { d=r1-r0; if(d<0)d=0; "
             + "gpu=(d>1000)?0:100-d/10; } "
-            + "printf \"%d %d %d\\n\", cpu, m, (gpu<0?0:gpu) }'"
+            + "printf \"%d %d %s %d %d %d %d %d %s\\n\", "
+            + "cpu, ct, m, (gpu<0?0:gpu), gt, dn, up, bat+0, bh }'"
         ]
 
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
                 var parts = this.text.trim().split(/\s+/);
-                if (parts.length >= 3) {
+                if (parts.length >= 10) {
                     panel.cpuLoad = Number(parts[0]);
-                    panel.memLoad = Number(parts[1]);
-                    panel.gpuLoad = Number(parts[2]);
+                    panel.cpuTemp = Number(parts[1]);
+                    panel.memUsedGb = Number(parts[2]);
+                    panel.memTotalGb = Number(parts[3]);
+                    panel.gpuLoad = Number(parts[4]);
+                    panel.gpuTemp = Number(parts[5]);
+                    panel.netDownSpeed = Number(parts[6]);
+                    panel.netUpSpeed = Number(parts[7]);
+                    panel.batteryPercent = Number(parts[8]);
+                    panel.batteryHours = Number(parts[9]);
+
+                    var down = panel.netDownHistory;
+                    down.push(panel.netDownSpeed);
+                    if (down.length > 24) down.shift();
+                    panel.netDownHistory = down;
+
+                    var up = panel.netUpHistory;
+                    up.push(panel.netUpSpeed);
+                    if (up.length > 24) up.shift();
+                    panel.netUpHistory = up;
+
+                    panel.netRevision++;
                 }
             }
         }
@@ -567,30 +680,71 @@ PanelWindow {
                     }
                 }
 
-                Column {
-                    id: statsColumn
+                Item {
+                    id: statsArea
                     anchors {
                         top: buttons.bottom
                         topMargin: 12
                         left: parent.left
                         leftMargin: 12
+                        right: parent.right
+                        rightMargin: 12
                     }
-                    spacing: 4
+                    height: 128
 
                     Repeater {
-                        model: [
-                            { glyph: panel.cpuGlyph, label: "CPU" },
-                            { glyph: panel.memoryGlyph, label: "Memory" },
-                            { glyph: panel.gpuGlyph, label: "GPU" }
-                        ]
+                        model: panel.hasBattery
+                            ? [
+                                { kind: "cpu", glyph: panel.cpuGlyph, label: "CPU" },
+                                { kind: "network", glyph: panel.wifiGlyph, label: "Network" },
+                                { kind: "memory", glyph: panel.memoryGlyph, label: "Memory" },
+                                { kind: "battery", glyph: panel.batteryGlyph, label: "Battery" },
+                                { kind: "gpu", glyph: panel.gpuGlyph, label: "GPU" }
+                              ]
+                            : [
+                                { kind: "cpu", glyph: panel.cpuGlyph, label: "CPU" },
+                                { kind: "memory", glyph: panel.memoryGlyph, label: "Memory" },
+                                { kind: "gpu", glyph: panel.gpuGlyph, label: "GPU" },
+                                { kind: "network", glyph: panel.wifiGlyph, label: "Network" }
+                              ]
 
                         delegate: Item {
                             id: statRow
-                            width: 220
+                            width: 144
                             height: 40
 
-                            property int statValue: index === 0 ? panel.cpuLoad
-                                : index === 1 ? panel.memLoad : panel.gpuLoad
+                            anchors {
+                                left: parent.left
+                                leftMargin: panel.hasBattery
+                                    ? (modelData.kind === "network"
+                                        || modelData.kind === "battery" ? 164 : 0)
+                                    : (index % 2 === 0 ? 0 : 164)
+                                top: parent.top
+                                topMargin: panel.hasBattery
+                                    ? (modelData.kind === "cpu" ? 0
+                                        : modelData.kind === "network" ? 0
+                                        : modelData.kind === "memory" ? 44
+                                        : modelData.kind === "battery" ? 44 : 88)
+                                    : (index < 2 ? 0 : 48)
+                            }
+
+                            property bool isNetwork: modelData.kind === "network"
+                            property int statValue: modelData.kind === "cpu" ? panel.cpuLoad
+                                : modelData.kind === "memory"
+                                    ? Math.round(100 * panel.memUsedGb
+                                        / Math.max(1, panel.memTotalGb))
+                                    : modelData.kind === "gpu" ? panel.gpuLoad
+                                    : panel.batteryPercent
+                            property int statTemp: modelData.kind === "cpu" ? panel.cpuTemp
+                                : modelData.kind === "gpu" ? panel.gpuTemp : 0
+                            property string statText: modelData.kind === "memory"
+                                ? panel.memUsedGb.toFixed(1) + " GB/"
+                                  + panel.memTotalGb.toFixed(1) + " GB"
+                                : modelData.kind === "battery"
+                                    ? statValue + "%"
+                                      + (panel.batteryHours >= 0
+                                        ? " " + panel.batteryHours.toFixed(1) + " h" : "")
+                                    : statValue + "% " + statTemp + "\u00b0C"
 
                             onStatValueChanged: ring.requestPaint()
 
@@ -600,26 +754,84 @@ PanelWindow {
                                 height: 40
                                 antialiasing: true
 
+                                property int revision: panel.netRevision
+                                onRevisionChanged: ring.requestPaint()
+
                                 onPaint: {
                                     var ctx = getContext("2d");
                                     ctx.clearRect(0, 0, width, height);
                                     ctx.lineWidth = 4;
-                                    ctx.strokeStyle = Qt.rgba(panel.fgColor.r,
+                                    var bg = Qt.rgba(panel.fgColor.r,
                                         panel.fgColor.g, panel.fgColor.b, 0.18);
-                                    ctx.beginPath();
-                                    ctx.arc(20, 20, 16, 0, Math.PI * 2);
-                                    ctx.stroke();
-                                    ctx.strokeStyle = panel.accentColor;
-                                    ctx.beginPath();
-                                    ctx.arc(20, 20, 16, -Math.PI / 2,
-                                        -Math.PI / 2 + Math.PI * 2 * statRow.statValue / 100);
-                                    ctx.stroke();
+
+                                    if (statRow.isNetwork) {
+                                        // Вырезы: сверху справа и снизу слева.
+                                        // Верхняя дуга — входящий трафик, нижняя — исходящий.
+                                        var gap = Math.PI / 12;
+                                        var topRight = -Math.PI / 4;
+                                        var bottomLeft = topRight + Math.PI;
+                                        var topStart = bottomLeft + gap;
+                                        var topSpan = topRight + 2 * Math.PI - gap - topStart;
+                                        var bottomStart = topRight + gap;
+                                        var bottomSpan = bottomLeft - gap - bottomStart;
+
+                                        var max = 1024;
+                                        var values = panel.netDownHistory;
+                                        for (var i = 0; i < values.length; i++)
+                                            if (values[i] > max) max = values[i];
+                                        values = panel.netUpHistory;
+                                        for (var j = 0; j < values.length; j++)
+                                            if (values[j] > max) max = values[j];
+
+                                        // Тёмная полоска растёт от левого нижнего
+                                        // края вправо (к верхнему правому вырезу).
+                                        var upFraction = Math.min(1, panel.netUpSpeed / max);
+                                        ctx.strokeStyle = bg;
+                                        ctx.beginPath();
+                                        ctx.arc(20, 20, 16, bottomStart,
+                                                bottomStart + bottomSpan);
+                                        ctx.stroke();
+                                        ctx.strokeStyle = panel.inverseAccentColor;
+                                        ctx.beginPath();
+                                        ctx.arc(20, 20, 16,
+                                                bottomStart + bottomSpan * (1 - upFraction),
+                                                bottomStart + bottomSpan);
+                                        ctx.stroke();
+
+                                        ctx.strokeStyle = bg;
+                                        ctx.beginPath();
+                                        ctx.arc(20, 20, 16, topStart, topStart + topSpan);
+                                        ctx.stroke();
+                                        ctx.strokeStyle = panel.accentColor;
+                                        ctx.beginPath();
+                                        ctx.arc(20, 20, 16, topStart,
+                                                topStart + topSpan
+                                                * Math.min(1, panel.netDownSpeed / max));
+                                        ctx.stroke();
+                                    } else {
+                                        // Разрез сверху справа (30°, как у Wi-Fi),
+                                        // дуга идёт вниз.
+                                        var gap = Math.PI / 12;
+                                        var start = -Math.PI / 4 + gap;
+                                        var span = 2 * Math.PI - 2 * gap;
+                                        ctx.strokeStyle = bg;
+                                        ctx.beginPath();
+                                        ctx.arc(20, 20, 16, start, start + span);
+                                        ctx.stroke();
+                                        ctx.strokeStyle = panel.accentColor;
+                                        ctx.beginPath();
+                                        ctx.arc(20, 20, 16, start,
+                                                start + span
+                                                * Math.min(1, statRow.statValue / 100));
+                                        ctx.stroke();
+                                    }
                                 }
 
                                 Component.onCompleted: ring.requestPaint()
 
                                 Connections {
                                     target: panel
+                                    function onInverseAccentColorChanged(): void { ring.requestPaint() }
                                     function onAccentColorChanged(): void { ring.requestPaint() }
                                     function onFgColorChanged(): void { ring.requestPaint() }
                                 }
@@ -633,31 +845,80 @@ PanelWindow {
                                 color: panel.fgColor
                             }
 
-                            Text {
+                            Column {
+                                visible: statRow.isNetwork
                                 anchors {
                                     left: ring.right
-                                    leftMargin: 12
+                                    leftMargin: 8
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                }
+                                spacing: 2
+
+                                Row {
+                                    spacing: 4
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: panel.downGlyph
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: 12
+                                        color: panel.accentColor
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: panel.formatSpeed(panel.netDownSpeed)
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: 10
+                                        color: panel.fgColor
+                                    }
+                                }
+
+                                Row {
+                                    spacing: 4
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: panel.upGlyph
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: 12
+                                        color: panel.inverseAccentColor
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: panel.formatSpeed(panel.netUpSpeed)
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: 10
+                                        color: panel.fgColor
+                                    }
+                                }
+                            }
+
+                            Column {
+                                visible: !statRow.isNetwork
+                                anchors {
+                                    left: ring.right
+                                    leftMargin: 8
                                     top: parent.top
                                     topMargin: 1
                                 }
-                                text: statRow.statValue + "%"
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 14
-                                color: panel.fgColor
-                            }
 
-                            Text {
-                                anchors {
-                                    left: ring.right
-                                    leftMargin: 12
-                                    top: parent.top
-                                    topMargin: 21
+                                Text {
+                                    text: statRow.statText
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: 12
+                                    color: panel.fgColor
                                 }
-                                text: modelData.label
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 11
-                                color: Qt.rgba(panel.fgColor.r, panel.fgColor.g,
-                                               panel.fgColor.b, 0.55)
+
+                                Text {
+                                    text: modelData.label
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: 11
+                                    color: Qt.rgba(panel.fgColor.r, panel.fgColor.g,
+                                                   panel.fgColor.b, 0.55)
+                                }
                             }
                         }
                     }
