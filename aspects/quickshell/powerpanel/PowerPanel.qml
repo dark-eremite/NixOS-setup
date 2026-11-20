@@ -51,13 +51,26 @@ PanelWindow {
     property string avatarPath: ""
     readonly property string userName: Quickshell.env("USER")
 
+    property real uptimeSeconds: 0
+    readonly property int uptimeHours: Math.floor(uptimeSeconds / 3600)
+    readonly property int uptimeMinutes: Math.floor((uptimeSeconds % 3600) / 60)
+
+    property int cpuLoad: 0
+    property int memLoad: 0
+    property int gpuLoad: 0
+
     readonly property string powerGlyph: "\u{f0425}"
     readonly property string rebootGlyph: "\u{f0709}"
     readonly property string suspendGlyph: "\u{f0904}"
     readonly property string logoutGlyph: "\u{f0343}"
+    readonly property string lockGlyph: "\uf023"
     readonly property string userGlyph: "\uf007"
+    readonly property string cpuGlyph: "\u{f4bc}"
+    readonly property string memoryGlyph: "\u{efc5}"
+    readonly property string gpuGlyph: "\u{f108}"
 
     readonly property var actions: [
+        { glyph: lockGlyph, command: [ "hyprlock" ] },
         { glyph: powerGlyph, command: [ "systemctl", "poweroff" ] },
         { glyph: rebootGlyph, command: [ "systemctl", "reboot" ] },
         { glyph: suspendGlyph, command: [ "systemctl", "suspend" ] },
@@ -287,6 +300,80 @@ PanelWindow {
         }
     }
 
+    Timer {
+        interval: 60000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            uptimeProc.running = false;
+            uptimeProc.running = true;
+        }
+    }
+
+    Process {
+        id: uptimeProc
+        command: [ "cat", "/proc/uptime" ]
+
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                var seconds = parseFloat(this.text);
+                if (!isNaN(seconds))
+                    panel.uptimeSeconds = seconds;
+            }
+        }
+    }
+
+    Timer {
+        interval: 2500
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            statsProc.running = false;
+            statsProc.running = true;
+        }
+    }
+
+    Process {
+        id: statsProc
+        command: [
+            "sh", "-c",
+            "cpu_sample() { awk '/^cpu /{t=0; for(i=2;i<=NF;i++)t+=$i; "
+            + "printf \"%d %d\\n\", t, $5+$6}' /proc/stat; }; "
+            + "gpu_path=/sys/class/drm/card1/gt/gt0/rc6_residency_ms; "
+            + "[ -f \"$gpu_path\" ] || gpu_path=/sys/class/drm/card0/gt/gt0/rc6_residency_ms; "
+            + "c0=$(cpu_sample); r0=$(cat \"$gpu_path\" 2>/dev/null || echo 0); sleep 1; "
+            + "c1=$(cpu_sample); r1=$(cat \"$gpu_path\" 2>/dev/null || echo 0); "
+            + "mem=$(awk '/MemTotal:/{t=$2} /MemAvailable:/{a=$2} "
+            + "END{if(t>0)printf \"%d\",(t-a)*100/t; else print 0}' /proc/meminfo); "
+            + "nv=$(command -v nvidia-smi >/dev/null 2>&1 && "
+            + "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits "
+            + "2>/dev/null | head -1); "
+            + "awk -v c0=\"$c0\" -v c1=\"$c1\" -v r0=\"$r0\" -v r1=\"$r1\" "
+            + "-v m=\"$mem\" -v nv=\"$nv\" 'BEGIN{ "
+            + "split(c0,a); split(c1,b); dt=b[1]-a[1]; idle=b[2]-a[2]; "
+            + "cpu=(dt>0)?(dt-idle)*100/dt:0; gpu=-1; "
+            + "if(nv!=\"\") gpu=nv; "
+            + "else if(r0!=\"\" && r1!=\"\") { d=r1-r0; if(d<0)d=0; "
+            + "gpu=(d>1000)?0:100-d/10; } "
+            + "printf \"%d %d %d\\n\", cpu, m, (gpu<0?0:gpu) }'"
+        ]
+
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                var parts = this.text.trim().split(/\s+/);
+                if (parts.length >= 3) {
+                    panel.cpuLoad = Number(parts[0]);
+                    panel.memLoad = Number(parts[1]);
+                    panel.gpuLoad = Number(parts[2]);
+                }
+            }
+        }
+    }
+
     Behavior on slide {
         NumberAnimation {
             duration: 260
@@ -358,12 +445,7 @@ PanelWindow {
 
             Item {
                 id: headerBlock
-                anchors {
-                    top: parent.top
-                    left: parent.left
-                    right: parent.right
-                }
-                height: parent.height - buttons.height
+                anchors.fill: parent
 
                 Item {
                     id: avatarBox
@@ -413,55 +495,170 @@ PanelWindow {
                     }
                     text: panel.userName
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 14
+                    font.pixelSize: 18
                     color: panel.fgColor
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
                 }
-            }
 
-            Row {
-                id: buttons
-                anchors {
-                    bottom: parent.bottom
-                    left: parent.left
-                    right: parent.right
+                Text {
+                    id: uptimeText
+                    anchors {
+                        left: userNameText.left
+                        right: userNameText.right
+                        top: userNameText.bottom
+                        topMargin: 2
+                    }
+                    text: panel.uptimeHours > 0
+                        ? "Uptime:\n" + panel.uptimeHours + " hours "
+                          + panel.uptimeMinutes + " minutes"
+                        : "Uptime:\n" + panel.uptimeMinutes + " minutes"
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: 14
+                    color: Qt.rgba(panel.fgColor.r, panel.fgColor.g, panel.fgColor.b, 0.55)
+                    elide: Text.ElideRight
                 }
-                height: 40
-                spacing: 0
 
-                Repeater {
-                    model: panel.actions
+                Row {
+                    id: buttons
+                    anchors {
+                        top: avatarBox.bottom
+                        topMargin: 12
+                        left: parent.left
+                        right: parent.right
+                    }
+                    height: 40
+                    spacing: 0
 
-                    delegate: Item {
-                        width: buttons.width / panel.actions.length
-                        height: buttons.height
+                    Repeater {
+                        model: panel.actions
 
-                        property bool hovered: false
+                        delegate: Item {
+                            width: buttons.width / panel.actions.length
+                            height: buttons.height
 
-                        Rectangle {
-                            anchors.fill: parent
-                            color: parent.hovered
-                                ? Qt.rgba(panel.accentColor.r, panel.accentColor.g,
-                                          panel.accentColor.b, 0.12)
-                                : "transparent"
+                            property bool hovered: false
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: parent.hovered
+                                    ? Qt.rgba(panel.accentColor.r, panel.accentColor.g,
+                                              panel.accentColor.b, 0.12)
+                                    : "transparent"
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.glyph
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 20
+                                color: parent.hovered ? panel.accentColor : panel.fgColor
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: parent.hovered = true
+                                onExited: parent.hovered = false
+                                onClicked: Quickshell.execDetached(modelData.command)
+                            }
                         }
+                    }
+                }
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.glyph
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 20
-                            color: parent.hovered ? panel.accentColor : panel.fgColor
-                        }
+                Column {
+                    id: statsColumn
+                    anchors {
+                        top: buttons.bottom
+                        topMargin: 12
+                        left: parent.left
+                        leftMargin: 12
+                    }
+                    spacing: 4
 
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onEntered: parent.hovered = true
-                            onExited: parent.hovered = false
-                            onClicked: Quickshell.execDetached(modelData.command)
+                    Repeater {
+                        model: [
+                            { glyph: panel.cpuGlyph, label: "CPU" },
+                            { glyph: panel.memoryGlyph, label: "Memory" },
+                            { glyph: panel.gpuGlyph, label: "GPU" }
+                        ]
+
+                        delegate: Item {
+                            id: statRow
+                            width: 220
+                            height: 40
+
+                            property int statValue: index === 0 ? panel.cpuLoad
+                                : index === 1 ? panel.memLoad : panel.gpuLoad
+
+                            onStatValueChanged: ring.requestPaint()
+
+                            Canvas {
+                                id: ring
+                                width: 40
+                                height: 40
+                                antialiasing: true
+
+                                onPaint: {
+                                    var ctx = getContext("2d");
+                                    ctx.clearRect(0, 0, width, height);
+                                    ctx.lineWidth = 4;
+                                    ctx.strokeStyle = Qt.rgba(panel.fgColor.r,
+                                        panel.fgColor.g, panel.fgColor.b, 0.18);
+                                    ctx.beginPath();
+                                    ctx.arc(20, 20, 16, 0, Math.PI * 2);
+                                    ctx.stroke();
+                                    ctx.strokeStyle = panel.accentColor;
+                                    ctx.beginPath();
+                                    ctx.arc(20, 20, 16, -Math.PI / 2,
+                                        -Math.PI / 2 + Math.PI * 2 * statRow.statValue / 100);
+                                    ctx.stroke();
+                                }
+
+                                Component.onCompleted: ring.requestPaint()
+
+                                Connections {
+                                    target: panel
+                                    function onAccentColorChanged(): void { ring.requestPaint() }
+                                    function onFgColorChanged(): void { ring.requestPaint() }
+                                }
+                            }
+
+                            Text {
+                                anchors.centerIn: ring
+                                text: modelData.glyph
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 18
+                                color: panel.fgColor
+                            }
+
+                            Text {
+                                anchors {
+                                    left: ring.right
+                                    leftMargin: 12
+                                    top: parent.top
+                                    topMargin: 1
+                                }
+                                text: statRow.statValue + "%"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 14
+                                color: panel.fgColor
+                            }
+
+                            Text {
+                                anchors {
+                                    left: ring.right
+                                    leftMargin: 12
+                                    top: parent.top
+                                    topMargin: 21
+                                }
+                                text: modelData.label
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: 11
+                                color: Qt.rgba(panel.fgColor.r, panel.fgColor.g,
+                                               panel.fgColor.b, 0.55)
+                            }
                         }
                     }
                 }
